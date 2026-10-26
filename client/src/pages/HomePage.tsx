@@ -82,7 +82,7 @@ export function HomePage() {
     <div className="page home">
       <section className="home-main">
         <div className="intro">
-          <h1>Spy Chess</h1>
+          <h1>Veiled Chess</h1>
           <p>
             Arrange your army however you like. Your opponent sees every piece as a bulb, and you see theirs the same
             way. Read their moves, mark your guesses, and capture the king.

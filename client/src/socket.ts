@@ -96,7 +96,9 @@ class Socket {
 
   unwatch(id: string) {
     this.watching.delete(id);
-    this.send({ t: 'game.leave', id });
+    // A connection that isn't ready yet isn't watching anything; queuing a leave would
+    // land after the re-join on connect and silently stop updates.
+    if (this.ready) this.raw({ t: 'game.leave', id });
   }
 
   on(l: Listener) {

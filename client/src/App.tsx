@@ -18,7 +18,7 @@ function Header() {
     <header className="topbar">
       <Link to="/" className="brand">
         <img src={pieceUrl('w', 'bulb')} alt="" />
-        Spy Chess
+        Veiled Chess
       </Link>
       <nav>
         <NavLink to="/" end>

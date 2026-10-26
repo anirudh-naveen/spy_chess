@@ -1084,3 +1084,202 @@ input:focus {
     min-width: 74px;
   }
 }
+
+/* ---- sheen -------------------------------------------------------------
+   A restrained lustre: light catching edges and glass, never glowing. */
+
+body {
+  background:
+    radial-gradient(ellipse 70% 45% at 50% -10%, rgba(96, 128, 180, 0.16), transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+.topbar {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03), transparent);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.025);
+}
+
+/* The name catches the light now and then. */
+.brand {
+  background: linear-gradient(100deg, var(--text) 40%, #ffffff 50%, var(--text) 60%) 0 0 / 250% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer 7s ease-in-out infinite;
+}
+.brand img {
+  filter: drop-shadow(0 0 0.5px rgba(255, 255, 255, 0.4));
+}
+@keyframes shimmer {
+  0%, 70% { background-position: 100% 0; }
+  100% { background-position: -50% 0; }
+}
+
+/* Raised surfaces: a faint top light and a soft shadow underneath. */
+.side,
+.play-option,
+.square-menu {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0) 120px),
+    var(--panel);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    0 12px 32px rgba(0, 0, 0, 0.28);
+}
+
+/* The board sits under a pane of glass. */
+.board {
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 22px 60px rgba(0, 0, 0, 0.5);
+}
+.board::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  pointer-events: none;
+  background:
+    linear-gradient(125deg, rgba(255, 255, 255, 0.3) 0%, rgba(255, 255, 255, 0.1) 18%, rgba(255, 255, 255, 0) 38%),
+    linear-gradient(125deg, transparent 54%, rgba(255, 255, 255, 0.09) 57%, transparent 61%),
+    linear-gradient(305deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0) 26%);
+  mix-blend-mode: screen;
+}
+.sq.light {
+  background: linear-gradient(160deg, #f1f1ee, var(--sq-light));
+}
+.sq.dark {
+  background: linear-gradient(160deg, #545a63, var(--sq-dark));
+}
+.piece {
+  filter: drop-shadow(0 2px 1.5px rgba(0, 0, 0, 0.32));
+}
+.piece.dragging {
+  filter: drop-shadow(0 8px 8px rgba(0, 0, 0, 0.4));
+  transform: scale(1.06);
+}
+
+/* Buttons: brushed metal for the primary action, with a sweep of light on hover. */
+.btn {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, #232d3a, var(--raised));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.btn:hover:not(:disabled) {
+  background: linear-gradient(180deg, #2a3646, #222c3a);
+}
+.btn.primary {
+  background: linear-gradient(180deg, #f6f8fb 0%, #d9dee6 55%, #c7ced8 100%);
+  border-color: #c7ced8;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 2px 10px rgba(0, 0, 0, 0.25);
+}
+.btn.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, #ffffff 0%, #e4e8ee 55%, #d2d8e1 100%);
+}
+.btn::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, 0.35) 50%, transparent 70%);
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+.btn:hover:not(:disabled)::after {
+  transform: translateX(120%);
+  transition: transform 0.7s ease;
+}
+.btn.danger {
+  background: linear-gradient(180deg, #e25a50, var(--red));
+}
+
+/* Clocks: the running one is polished; low time keeps its red. */
+.clock {
+  background: linear-gradient(180deg, #1b2330, var(--panel));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.clock.running {
+  background: linear-gradient(180deg, #ffffff 0%, #dfe4eb 60%, #cdd3dc 100%);
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 4px 14px rgba(0, 0, 0, 0.3);
+}
+.clock.running.low {
+  background: linear-gradient(180deg, #e8645a, var(--red));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.mode-switch button.active,
+.color-choice.active,
+.roster-chip.active {
+  background: linear-gradient(180deg, #26313f, var(--raised));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.guess-chip,
+.guess-chip:nth-child(even) {
+  background: linear-gradient(160deg, #f4f4f1, var(--sq-light));
+  box-shadow: inset 0 1px 0 #ffffff, 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+.guess-chip img {
+  filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.3));
+}
+
+/* Unmasking: the bulb splits along a jagged seam and falls away from the piece inside. */
+.crack {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+.shell {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 2px 1.5px rgba(0, 0, 0, 0.32));
+  animation: 0.9s cubic-bezier(0.3, 0.6, 0.4, 1) forwards;
+}
+.shell.left {
+  clip-path: polygon(0 0, 53% 0, 47% 20%, 56% 38%, 45% 56%, 54% 74%, 48% 100%, 0 100%);
+  transform-origin: 30% 90%;
+  animation-name: shell-left;
+}
+.shell.right {
+  clip-path: polygon(53% 0, 100% 0, 100% 100%, 48% 100%, 54% 74%, 45% 56%, 56% 38%, 47% 20%);
+  transform-origin: 70% 90%;
+  animation-name: shell-right;
+}
+@keyframes shell-left {
+  0%, 18% { transform: none; opacity: 1; }
+  100% { transform: translate(-16%, 10%) rotate(-24deg); opacity: 0; }
+}
+@keyframes shell-right {
+  0%, 18% { transform: none; opacity: 1; }
+  100% { transform: translate(16%, 10%) rotate(24deg); opacity: 0; }
+}
+.piece.emerging {
+  animation: emerge 0.9s ease-out;
+}
+@keyframes emerge {
+  0%, 25% { opacity: 0; transform: scale(0.82); }
+  100% { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand {
+    animation: none;
+    background-position: 100% 0;
+  }
+  .crack {
+    display: none;
+  }
+  .piece.emerging {
+    animation: none;
+  }
+  .btn:hover:not(:disabled)::after {
+    transition: none;
+  }
+}

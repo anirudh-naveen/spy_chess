@@ -30,6 +30,9 @@ interface Drag {
   wasSelected: boolean;
 }
 
+/** How long a revealed bulb takes to crack open. */
+const CRACK_MS = 900;
+
 /** Percent offsets of a square inside the board, for positioning overlays. */
 export function squarePosition(sq: string, orientation: Color) {
   const i = toIndex(sq);
@@ -45,6 +48,26 @@ export function Board(props: BoardProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  const seenTypes = useRef(new Map<string, PieceView['type']>());
+  const [cracking, setCracking] = useState<Set<string>>(new Set());
+
+  // A bulb that turns into a real piece (scout reveal, end of game) cracks open.
+  useEffect(() => {
+    const opened: string[] = [];
+    for (const p of pieces) {
+      if (p && p.type !== 'bulb' && seenTypes.current.get(p.id) === 'bulb') opened.push(p.id);
+    }
+    seenTypes.current = new Map(pieces.filter((p): p is PieceView => !!p).map((p) => [p.id, p.type]));
+    if (!opened.length) return;
+    setCracking((s) => new Set([...s, ...opened]));
+    window.setTimeout(() => {
+      setCracking((s) => {
+        const next = new Set(s);
+        opened.forEach((id) => next.delete(id));
+        return next;
+      });
+    }, CRACK_MS);
+  }, [pieces]);
 
   const targets = selected && dests ? dests(selected) : [];
 
@@ -135,6 +158,7 @@ export function Board(props: BoardProps) {
       const isTarget = targets.includes(sq);
       const guess = piece && piece.type === 'bulb' ? marks?.[piece.id] : undefined;
       const dragging = drag?.active && drag.from === sq;
+      const opening = piece && cracking.has(piece.id);
       const cls = [
         'sq',
         dark ? 'dark' : 'light',
@@ -150,11 +174,17 @@ export function Board(props: BoardProps) {
         <div key={sq} className={cls} data-square={sq}>
           {piece && (
             <img
-              className={`piece${dragging ? ' ghosted' : ''}`}
+              className={`piece${dragging ? ' ghosted' : ''}${opening ? ' emerging' : ''}`}
               src={pieceUrl(piece.color, guess ?? piece.type, !!guess)}
               alt=""
               draggable={false}
             />
+          )}
+          {opening && (
+            <span className="crack" aria-hidden="true">
+              <img className="shell left" src={pieceUrl(piece.color, 'bulb')} alt="" draggable={false} />
+              <img className="shell right" src={pieceUrl(piece.color, 'bulb')} alt="" draggable={false} />
+            </span>
           )}
           {col === 0 && <span className="coord rank">{r + 1}</span>}
           {row === 7 && <span className="coord file">{FILES[f]}</span>}

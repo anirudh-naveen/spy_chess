@@ -1,4 +1,4 @@
-# Spy Chess
+# Veiled Chess
 
 A variant of king-capture chess where the pieces' roles are unknown.
 
