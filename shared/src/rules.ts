@@ -66,7 +66,7 @@ const KING: [number, number][] = [
 const CAMEL: [number, number][] = [
   [1, 3], [3, 1], [3, -1], [1, -3], [-1, -3], [-3, -1], [-3, 1], [-1, 3],
 ];
-const JUMPER: [number, number][] = KING.flatMap(([df, dr]) => [[df, dr], [df * 2, dr * 2]] as [number, number][]);
+const JUMPER: [number, number][] = KING.map(([df, dr]) => [df * 2, dr * 2]);
 const ROOK_DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const BISHOP_DIRS: [number, number][] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 

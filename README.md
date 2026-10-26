@@ -26,7 +26,8 @@ pieces as an identical **bulb**, and you see theirs the same way. Work out what 
 ## Modes
 
 - **Standard:** the usual 16 pieces, arranged anywhere on your first two ranks.
-- **Armada:** pawns stay on your second rank. You pick 8 of 12 back-rank pieces, at most one of each, king required:
+- **Armada:** pawns stay on your second rank. You pick 8 of 12 back-rank pieces, at most one of each, king required,
+  and the 7 non-king pieces may cost at most 30 points in total:
   king, queen, chancellor, archbishop, rook, jumper, bishop, knight, camel, guard, lancer and scout. The in-game piece
   guide explains each one. Scouts permanently reveal enemy pieces next to them, except guards.
 
@@ -37,8 +38,6 @@ Each mode has its own rating, and everyone starts at 1000 in both. Ratings use s
 - K = 40 for your first 30 rated games, then K = 20.
 - Changes are whole points, and a decisive result moves you at least 1 point.
 - Before a rated game you see what you stand to gain or lose for a win, draw or loss.
-- In armada, squad points (the summed value of your 7 non-king pieces) act as a handicap: each point of difference
-  counts like 15 rating points, so a lighter squad gains more for a win and loses less for a loss.
 
 Only matchmaking games are rated, and they require an account. Invite-link games are casual, and anyone can play them
 without signing in.

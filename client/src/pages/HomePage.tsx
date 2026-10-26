@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { type GameMode, GAME_MODES } from '@spy/shared';
+import { type GameMode, ARMADA_BUDGET, GAME_MODES } from '@spy/shared';
 import { api, ApiError, type LeaderboardRow } from '../api';
 import { PieceGuide } from '../components/PieceGuide';
 import { useQueue } from '../queue';
@@ -27,7 +27,7 @@ function savedMode(): GameMode {
 
 const MODE_BLURB: Record<GameMode, string> = {
   standard: 'The usual sixteen pieces, arranged anywhere on your first two ranks.',
-  armada: 'Choose 8 of 12 pieces, one of each, for your back rank. Pawns stay in front.',
+  armada: `Build a back rank from 12 pieces, one of each, within a ${ARMADA_BUDGET}-point budget. Pawns stay in front.`,
 };
 
 export function HomePage() {
@@ -163,7 +163,8 @@ export function HomePage() {
           <ul>
             <li>
               Before the game you have 60 seconds to set up. In standard, place all 16 pieces anywhere on your first two
-              ranks. In armada, pick 8 different pieces for your back rank; pawns stay on the second rank.
+              ranks. In armada, pick 8 different pieces for your back rank worth at most {ARMADA_BUDGET} points (the
+              king is free); pawns stay on the second rank.
             </li>
             <li>Pawns can move two squares on their first move. There is no castling or en passant.</li>
             <li>There is no check. Capture the enemy king to win, so moving into danger is allowed, and fatal.</li>

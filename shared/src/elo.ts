@@ -35,21 +35,3 @@ export function stakes(ra: number, rb: number, gamesPlayed: number): Stakes {
     loss: ratingDelta(ra, rb, 0, gamesPlayed),
   };
 }
-
-/** Each squad point of difference in armada counts like this many rating points. */
-export const SQUAD_ELO_PER_POINT = 15;
-
-/**
- * Armada rating change. A lighter squad is treated like a lower-rated player, so it
- * gains more for a win and loses less for a loss; a heavier squad the reverse.
- */
-export function armadaDelta(
-  ra: number,
-  rb: number,
-  score: number,
-  gamesPlayed: number,
-  squadA: number,
-  squadB: number,
-): number {
-  return ratingDelta(ra + SQUAD_ELO_PER_POINT * (squadA - squadB), rb, score, gamesPlayed);
-}

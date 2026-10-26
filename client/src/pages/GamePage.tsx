@@ -8,6 +8,7 @@ import {
   type PieceType,
   type PieceView,
   type ResultReason,
+  ARMADA_BUDGET,
   ARMADA_GUESSES,
   ARMADA_TYPES,
   PIECE_INFO,
@@ -304,7 +305,7 @@ function useSetup(game: GameSnapshot): SetupState {
         delete next[at];
       } else {
         const empty = squares.find((sq) => !next[sq]);
-        if (!empty) return;
+        if (!empty || squadPoints(next) + PIECE_INFO[type].value > ARMADA_BUDGET) return;
         next[empty] = type;
       }
       update(next);
@@ -387,20 +388,12 @@ function Status({ game, offset, now }: { game: GameSnapshot; offset: number; now
         <span>{MODE_NAME[game.mode]}</span>
         <span>10+0</span>
         <span>{game.rated ? 'Rated' : 'Casual'}</span>
-        {game.squads && (
-          <span title="Armada squad points">
-            Squads {game.squads.w} vs {game.squads.b}
-          </span>
-        )}
         {game.stakes && game.phase !== 'over' && (
           <span className="stakes" title="Rating change for a win / draw / loss">
             <span>Win <span className="up">+{game.stakes.win}</span></span>
             <span>Draw {game.stakes.draw >= 0 ? `+${game.stakes.draw}` : `−${-game.stakes.draw}`}</span>
             <span>Loss −{-game.stakes.loss}</span>
           </span>
-        )}
-        {game.rated && game.mode === 'armada' && game.phase !== 'over' && (
-          <span>Lighter squads win more and lose less.</span>
         )}
       </div>
     </div>
@@ -443,7 +436,7 @@ function SetupHelp({ game, setup }: { game: GameSnapshot; setup: SetupState }) {
     <div className="panel-block">
       <p className="hint">
         {armada
-          ? 'Pick 8 of the 12 pieces for your back rank (the king is required), then drag to arrange them. Pawns stay on your second rank.'
+          ? `Pick 8 of the 12 pieces for your back rank, spending at most ${ARMADA_BUDGET} points (the king is free and required), then drag to arrange them. Pawns stay on your second rank.`
           : 'Drag pieces between squares on your first two ranks to swap them.'}{' '}
         Your opponent will only see bulbs.
       </p>
@@ -470,12 +463,17 @@ function Roster({ color, setup }: { color: Color; setup: SetupState }) {
     Array.from({ length: 8 }, (_, f) => setup.layout?.[toSquare(back * 8 + f)]).filter(Boolean),
   );
   const full = onBoard.size >= 8;
+  const spent = setup.layout ? squadPoints(setup.layout) : 0;
   return (
     <div className="roster">
       <div className="roster-head">
         <span className="label">Your armada</span>
-        <span className={`small ${full ? '' : 'muted'}`}>
-          {onBoard.size} / 8 · {setup.layout ? squadPoints(setup.layout) : 0} pts
+        <span className="small">
+          <span className={full ? '' : 'muted'}>{onBoard.size} / 8 pieces</span>
+          {' · '}
+          <span className={spent > ARMADA_BUDGET ? 'over' : 'muted'}>
+            {spent} / {ARMADA_BUDGET} pts
+          </span>
         </span>
       </div>
       <div className="roster-grid">
@@ -485,7 +483,9 @@ function Roster({ color, setup }: { color: Color; setup: SetupState }) {
             <button
               key={t}
               className={`roster-chip${active ? ' active' : ''}`}
-              disabled={setup.locked || t === 'k' || (!active && full)}
+              disabled={
+                setup.locked || t === 'k' || (!active && (full || spent + PIECE_INFO[t].value > ARMADA_BUDGET))
+              }
               onClick={() => setup.toggle(t)}
               title={PIECE_INFO[t].moves}
             >

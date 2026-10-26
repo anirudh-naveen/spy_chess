@@ -5,15 +5,14 @@ import {
   type Board,
   type GameState,
   type Layout,
+  ARMADA_BUDGET,
   applyMove,
-  armadaDelta,
   boardFromLayouts,
   defaultLayout,
   emptyBoard,
   legalMoves,
   newGame,
   randomLayout,
-  ratingDelta,
   redactFor,
   setupSquares,
   squadPoints,
@@ -99,19 +98,14 @@ describe('armada movement', () => {
     expect(m).not.toContain('d5');
   });
 
-  it('jumper reaches one or two squares in every direction, over pieces', () => {
+  it('jumper lands exactly two squares away in every direction, over pieces', () => {
     const b = withKings();
     place(b, 'd4', 'w', 'j');
-    place(b, 'd5', 'w', 'p');
-    place(b, 'e5', 'b', 'p');
-    const m = legalMoves(newGame(b), 'd4').sort();
-    expect(m).toContain('d6');
-    expect(m).toContain('f6');
-    expect(m).toContain('e5');
-    expect(m).not.toContain('d5');
-    expect(m).not.toContain('d7');
-    expect(m).not.toContain('e6');
-    expect(m).toHaveLength(15);
+    place(b, 'd5', 'w', 'p'); // jumped over
+    place(b, 'e5', 'b', 'p'); // jumped over, not capturable
+    place(b, 'f6', 'b', 'n'); // capturable
+    place(b, 'b4', 'w', 'p'); // own piece blocks the landing square
+    expect(legalMoves(newGame(b), 'd4').sort()).toEqual(['b2', 'b6', 'd2', 'd6', 'f2', 'f4', 'f6']);
   });
 
   it('camel makes long L jumps', () => {
@@ -226,15 +220,15 @@ describe('armada balance', () => {
   });
 
   it('squad points sum the non-king back rank', () => {
-    expect(squadPoints(defaultLayout('w', 'armada'))).toBe(5 + 3 + 4 + 9 + 2 + 8 + 3);
+    expect(squadPoints(defaultLayout('w', 'armada'))).toBe(5 + 3 + 3 + 9 + 2 + 2 + 3);
   });
 
-  it('lighter squads win more and lose less', () => {
-    const even = ratingDelta(1000, 1000, 1, 50);
-    expect(armadaDelta(1000, 1000, 1, 50, 25, 25)).toBe(even);
-    expect(armadaDelta(1000, 1000, 1, 50, 22, 36)).toBeGreaterThan(even);
-    expect(armadaDelta(1000, 1000, 0, 50, 22, 36)).toBeGreaterThan(-even);
-    expect(armadaDelta(1000, 1000, 1, 50, 36, 22)).toBeLessThan(even);
-    expect(armadaDelta(1000, 1000, 0, 50, 36, 22)).toBeLessThan(-even);
+  it('armadas must fit the point budget', () => {
+    expect(squadPoints(defaultLayout('w', 'armada'))).toBeLessThanOrEqual(ARMADA_BUDGET);
+    for (let i = 0; i < 50; i++) expect(squadPoints(randomLayout('b', 'armada'))).toBeLessThanOrEqual(ARMADA_BUDGET);
+    // Queen, chancellor and archbishop together can't fit with four more pieces.
+    const heavy: Layout = { ...defaultLayout('w', 'armada'), a1: 'c', b1: 'a', c1: 'r' };
+    expect(squadPoints(heavy)).toBeGreaterThan(ARMADA_BUDGET);
+    expect(validateLayout('w', heavy, 'armada')).toMatch(/limit is 30/);
   });
 });

@@ -15,7 +15,6 @@ import {
   PROMOTION_TYPES,
   SETUP_MS,
   applyMove,
-  armadaDelta,
   boardFromLayouts,
   other,
   randomLayout,
@@ -23,7 +22,6 @@ import {
   ratingDelta,
   redactFor,
   replay,
-  squadPoints,
   stakes,
   validateLayout,
 } from '@spy/shared';
@@ -370,10 +368,6 @@ export class Game {
           ? stakes(mine.rating, theirs.rating, mine.games ?? 0)
           : null,
       ratingChange: this.ratingChange,
-      squads:
-        this.mode === 'armada' && this.phase === 'over' && this.layouts.w && this.layouts.b
-          ? { w: squadPoints(this.layouts.w), b: squadPoints(this.layouts.b) }
-          : null,
       result: this.result,
     };
   }
@@ -486,18 +480,8 @@ async function applyRatings(game: Game, result: Result): Promise<Record<Color, R
     const rb = byId.get(b.id);
     if (!rw || !rb) throw new Error('rated game player missing');
     const scoreW = result.winner === 'w' ? 1 : result.winner === 'b' ? 0 : 0.5;
-    let dW: number;
-    let dB: number;
-    if (game.mode === 'armada' && game.layouts.w && game.layouts.b) {
-      // Lighter squads are rewarded: they gain more for a win and lose less for a loss.
-      const sw = squadPoints(game.layouts.w);
-      const sb = squadPoints(game.layouts.b);
-      dW = armadaDelta(rw.rating, rb.rating, scoreW, rw.games_played, sw, sb);
-      dB = armadaDelta(rb.rating, rw.rating, 1 - scoreW, rb.games_played, sb, sw);
-    } else {
-      dW = ratingDelta(rw.rating, rb.rating, scoreW, rw.games_played);
-      dB = ratingDelta(rb.rating, rw.rating, 1 - scoreW, rb.games_played);
-    }
+    const dW = ratingDelta(rw.rating, rb.rating, scoreW, rw.games_played);
+    const dB = ratingDelta(rb.rating, rw.rating, 1 - scoreW, rb.games_played);
     const change = {
       w: { before: rw.rating, after: rw.rating + dW },
       b: { before: rb.rating, after: rb.rating + dB },

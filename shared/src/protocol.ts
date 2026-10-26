@@ -69,8 +69,6 @@ export interface GameSnapshot {
   marks: Record<string, Guess>;
   stakes: Stakes | null;
   ratingChange: Record<Color, RatingChange> | null;
-  /** Armada squad points for both sides, shown once the game is over. */
-  squads: Record<Color, number> | null;
   result: Result | null;
 }
 

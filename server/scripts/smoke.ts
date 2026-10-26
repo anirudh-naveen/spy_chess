@@ -202,9 +202,14 @@ const [aw, abl] = as0.you === 'w' ? [cd, ce] : [ce, cd];
 aw.send({ t: 'setup.submit', id: aid, layout: defaultLayout('w'), final: true });
 await aw.wait((m) => m.t === 'error');
 assert(true, 'a standard layout is rejected in armada');
-// Light white squad (pawn-heavy back rank isn't allowed, so pick cheap pieces) vs the heavy default.
-const light = { ...defaultLayout('w', 'armada'), a1: 'g', b1: 'n', c1: 'm', d1: 'l', f1: 's', g1: 'b', h1: 'j' } as any;
-aw.send({ t: 'setup.submit', id: aid, layout: light, final: true });
+// Queen, chancellor and archbishop together blow the 30-point budget.
+const heavy = { ...defaultLayout('w', 'armada'), a1: 'c', b1: 'a', c1: 'r' } as any;
+aw.send({ t: 'setup.submit', id: aid, layout: heavy, final: true });
+await aw.wait((m) => m.t === 'error' && /limit is 30/.test(m.message));
+assert(true, 'an armada over the point budget is rejected');
+// A creative 28-point squad: chancellor and archbishop instead of the queen.
+const creative = { ...defaultLayout('w', 'armada'), a1: 'c', b1: 'a', c1: 'n', d1: 'b', f1: 's', g1: 'g', h1: 'l' } as any;
+aw.send({ t: 'setup.submit', id: aid, layout: creative, final: true });
 abl.send({ t: 'setup.submit', id: aid, layout: defaultLayout('b', 'armada'), final: true });
 await aw.state(aid, (g) => g.phase === 'play');
 aw.send({ t: 'move', id: aid, from: 'e2', to: 'e4' });
@@ -213,9 +218,8 @@ abl.send({ t: 'move', id: aid, from: 'e7', to: 'e5' });
 await aw.state(aid, (g) => g.view?.moves.length === 2);
 abl.send({ t: 'resign', id: aid });
 const aend = await aw.state(aid, (g) => g.phase === 'over' && !!g.ratingChange);
-assert(aend.squads?.w === 21 && aend.squads?.b === 34, 'squad points shown after the game');
 const gain = aend.ratingChange!.w.after - aend.ratingChange!.w.before;
-assert(gain > 20, `lighter squad's win pays more than an even game (+${gain})`);
+assert(gain === 20, 'armada uses plain Elo (+20 between new players)');
 const dName = aw === cd ? `dana_${tag}` : `eli_${tag}`;
 const dprof = (await (await fetch(`${API}/users/${dName}`)).json()) as any;
 assert(

@@ -935,6 +935,9 @@ input:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.roster-head .over {
+  color: var(--red);
+}
 .roster-value {
   color: var(--faint);
   font-variant-numeric: tabular-nums;

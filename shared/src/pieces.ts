@@ -2,7 +2,7 @@ import type { PieceType } from './board.js';
 
 export interface PieceInfo {
   name: string;
-  /** Material value, used for the material count, setup display and armada squad strength. The king has none. */
+  /** Material value, used for the material count and the armada budget. The king has none. */
   value: number;
   moves: string;
   /** Why you'd pick it over another piece of the same value. */
@@ -20,7 +20,7 @@ export const PIECE_INFO: Record<PieceType, PieceInfo> = {
     name: 'Queen',
     value: 9,
     moves: 'Any distance in a straight line or diagonal.',
-    role: 'The strongest slider. Costs the most squad points.',
+    role: 'The strongest slider, and the biggest bite out of your budget.',
   },
   c: {
     name: 'Chancellor',
@@ -42,9 +42,9 @@ export const PIECE_INFO: Record<PieceType, PieceInfo> = {
   },
   j: {
     name: 'Jumper',
-    value: 4,
-    moves: 'One or two squares in any straight or diagonal direction, jumping over pieces.',
-    role: 'Hops over pawn walls. Hits 16 squares around it but never reaches far.',
+    value: 3,
+    moves: 'Exactly two squares in any straight or diagonal direction, jumping over whatever is in between.',
+    role: 'Hops clean over pawn walls and can never be blocked, but always lands two squares away.',
   },
   b: {
     name: 'Bishop',
@@ -66,7 +66,7 @@ export const PIECE_INFO: Record<PieceType, PieceInfo> = {
   },
   g: {
     name: 'Guard',
-    value: 3,
+    value: 2,
     moves: 'One square in any direction, like a king. Scouts cannot reveal it.',
     role: 'A decoy king: it moves exactly like your king and is immune to scouts.',
   },
@@ -90,7 +90,10 @@ export const PIECE_INFO: Record<PieceType, PieceInfo> = {
   },
 };
 
-/** Squad strength: the summed value of a layout's pieces other than the king and pawns. */
+/** Most points an armada's back rank may spend, not counting the king. */
+export const ARMADA_BUDGET = 30;
+
+/** Points a layout spends: the summed value of its pieces other than the king and pawns. */
 export function squadPoints(layout: Partial<Record<string, PieceType>>): number {
   let total = 0;
   for (const t of Object.values(layout)) if (t && t !== 'p') total += PIECE_INFO[t].value;
@@ -98,7 +101,7 @@ export function squadPoints(layout: Partial<Record<string, PieceType>>): number 
 }
 
 /** The twelve back-rank pieces an armada is chosen from: at most one of each, king required. */
-export const ARMADA_TYPES: PieceType[] = ['k', 'q', 'c', 'a', 'r', 'j', 'b', 'n', 'm', 'g', 'l', 's'];
+export const ARMADA_TYPES: PieceType[] = ['k', 'q', 'c', 'a', 'r', 'j', 'b', 'n', 'm', 'l', 'g', 's'];
 
 /** Guesses offered when marking an enemy bulb in each mode. */
 export const STANDARD_GUESSES: PieceType[] = ['k', 'q', 'r', 'b', 'n', 'p'];

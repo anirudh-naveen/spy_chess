@@ -11,10 +11,11 @@ import {
   toIndex,
   toSquare,
 } from './board.js';
-import { ARMADA_TYPES } from './pieces.js';
+import { ARMADA_BUDGET, ARMADA_TYPES, squadPoints } from './pieces.js';
 
 const STANDARD_BACK: PieceType[] = ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'];
-const ARMADA_BACK: PieceType[] = ['r', 'n', 'j', 'q', 'k', 's', 'c', 'b'];
+// 27 of the 30-point budget.
+const ARMADA_BACK: PieceType[] = ['r', 'n', 'j', 'q', 'k', 's', 'g', 'b'];
 
 function shuffle<T>(items: T[], rand: () => number): T[] {
   const out = items.slice();
@@ -45,12 +46,16 @@ export function defaultLayout(c: Color, mode: GameMode = 'standard'): Layout {
 
 /**
  * Standard: all 16 pieces shuffled over both home ranks.
- * Armada: the king plus 7 other distinct roster pieces, shuffled along the back rank.
+ * Armada: the king plus 7 other distinct roster pieces within the budget, shuffled along the back rank.
  */
 export function randomLayout(c: Color, mode: GameMode = 'standard', rand: () => number = Math.random): Layout {
   if (mode === 'armada') {
-    const others = shuffle(ARMADA_TYPES.filter((t) => t !== 'k'), rand).slice(0, 7);
-    return withPawns(c, shuffle(['k', ...others], rand));
+    // Most random picks fit the budget; redraw until one does.
+    for (;;) {
+      const others = shuffle(ARMADA_TYPES.filter((t) => t !== 'k'), rand).slice(0, 7);
+      const layout = withPawns(c, shuffle(['k', ...others], rand));
+      if (squadPoints(layout) <= ARMADA_BUDGET) return layout;
+    }
   }
   const pieces: PieceType[] = [];
   for (const [t, n] of Object.entries(PIECE_COUNTS) as [PieceType, number][]) {
@@ -95,6 +100,8 @@ export function validateLayout(c: Color, layout: unknown, mode: GameMode = 'stan
   if (mode === 'armada') {
     if (counts.k !== 1) return 'Your armada needs exactly one king';
     for (const t of ARMADA_TYPES) if ((counts[t] ?? 0) > 1) return 'An armada can include at most one of each piece';
+    const spent = squadPoints(layout as Layout);
+    if (spent > ARMADA_BUDGET) return `Your armada costs ${spent} points; the limit is ${ARMADA_BUDGET}`;
     return null;
   }
   for (const [t, n] of Object.entries(PIECE_COUNTS)) {
