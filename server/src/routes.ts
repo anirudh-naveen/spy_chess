@@ -1,10 +1,11 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { identify } from './auth.js';
+import { RATING_COLUMNS, USER_COLUMNS, identify, modeRating } from './auth.js';
 import { pool } from './db.js';
 import type { GameManager } from './manager.js';
 
-const inviteBody = z.object({ color: z.enum(['w', 'b', 'random']).default('random') }).default({});
+const mode = z.enum(['standard', 'armada']).default('standard');
+const inviteBody = z.object({ color: z.enum(['w', 'b', 'random']).default('random'), mode }).default({});
 
 export function apiRoutes(app: FastifyInstance, manager: GameManager) {
   app.get('/health', async () => ({ ok: true }));
@@ -15,32 +16,38 @@ export function apiRoutes(app: FastifyInstance, manager: GameManager) {
     if (!who) return reply.code(401).send({ error: 'Missing session' });
     const parsed = inviteBody.safeParse(req.body ?? {});
     if (!parsed.success) return reply.code(400).send({ error: 'Bad color' });
-    const g = await manager.createInvite({ id: who.id, name: who.name, guest: who.guest }, parsed.data.color);
+    const g = await manager.createInvite(
+      { id: who.id, name: who.name, guest: who.guest },
+      parsed.data.color,
+      parsed.data.mode,
+    );
     return { id: g.id };
   });
 
-  app.get('/leaderboard', async () => {
+  app.get<{ Querystring: { mode?: string } }>('/leaderboard', async (req) => {
+    const m = mode.catch('standard').parse(req.query.mode);
+    const col = RATING_COLUMNS[m];
     const r = await pool.query(
-      `SELECT username, rating, games_played FROM users WHERE games_played > 0
-       ORDER BY rating DESC, games_played DESC LIMIT 50`,
+      `SELECT username, ${col.rating} AS rating, ${col.games} AS games FROM users WHERE ${col.games} > 0
+       ORDER BY ${col.rating} DESC, ${col.games} DESC LIMIT 50`,
     );
-    return { players: r.rows.map((u) => ({ name: u.username, rating: u.rating, gamesPlayed: u.games_played })) };
+    return { mode: m, players: r.rows.map((u) => ({ name: u.username, rating: u.rating, gamesPlayed: u.games })) };
   });
 
   app.get<{ Params: { name: string } }>('/users/:name', async (req, reply) => {
     const u = (
-      await pool.query('SELECT id, username, rating, games_played, created_at FROM users WHERE lower(username) = lower($1)', [
+      await pool.query(`SELECT ${USER_COLUMNS}, created_at FROM users WHERE lower(username) = lower($1)`, [
         req.params.name,
       ])
     ).rows[0];
     if (!u) return reply.code(404).send({ error: 'No such player' });
 
     const history = await pool.query(
-      'SELECT after AS rating, at FROM rating_history WHERE user_id = $1 ORDER BY at ASC LIMIT 500',
+      'SELECT mode, after AS rating, at FROM rating_history WHERE user_id = $1 ORDER BY at ASC LIMIT 1000',
       [u.id],
     );
     const games = await pool.query(
-      `SELECT g.id, g.rated, g.white_name, g.black_name, g.white_user, g.result, g.ended_at,
+      `SELECT g.id, g.rated, g.mode, g.white_name, g.black_name, g.white_user, g.result, g.ended_at,
               h.before, h.after
          FROM games g
          LEFT JOIN rating_history h ON h.game_id = g.id AND h.user_id = $1
@@ -53,17 +60,17 @@ export function apiRoutes(app: FastifyInstance, manager: GameManager) {
     return {
       user: {
         name: u.username,
-        rating: u.rating,
-        gamesPlayed: u.games_played,
+        ratings: { standard: modeRating(u, 'standard'), armada: modeRating(u, 'armada') },
         joined: u.created_at,
       },
-      history: history.rows.map((h) => ({ rating: h.rating, at: h.at })),
+      history: history.rows.map((h) => ({ mode: h.mode, rating: h.rating, at: h.at })),
       games: games.rows.map((g) => {
         const color = g.white_user === u.id ? 'w' : 'b';
         const winner = g.result?.winner ?? null;
         return {
           id: g.id,
           rated: g.rated,
+          mode: g.mode,
           color,
           opponent: color === 'w' ? g.black_name : g.white_name,
           outcome: winner === null ? 'draw' : winner === color ? 'win' : 'loss',

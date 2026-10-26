@@ -1,18 +1,21 @@
-import type { Color, GameSnapshot, PieceType } from '@spy/shared';
+import { type Color, type GameSnapshot, type PieceType, PIECE_INFO } from '@spy/shared';
 import { Link } from 'react-router-dom';
 import { pieceUrl } from '../pieces';
 import { formatClock, remaining } from '../useGame';
 
-const ORDER: PieceType[] = ['q', 'r', 'b', 'n', 'p', 'k'];
+const ORDER: PieceType[] = ['q', 'c', 'a', 'r', 'j', 'b', 'n', 'm', 'g', 'l', 's', 'p', 'k'];
 
 export function PlayerBar({ game, color, offset, now }: { game: GameSnapshot; color: Color; offset: number; now: number }) {
   const seat = game.players[color];
   const ms = remaining(game, color, offset, now);
   const running = game.clockRunning?.color === color && game.phase === 'play';
   // Pieces this player has taken, i.e. captured pieces of the other color.
-  const taken = (game.view?.captured ?? [])
+  const captured = game.view?.captured ?? [];
+  const taken = captured
     .filter((c) => c.color !== color)
     .sort((a, b) => ORDER.indexOf(a.type) - ORDER.indexOf(b.type));
+  // Material lead from captures, using each piece's point value.
+  const lead = captured.reduce((sum, c) => sum + (c.color !== color ? 1 : -1) * PIECE_INFO[c.type].value, 0);
   const change = game.ratingChange?.[color];
 
   return (
@@ -45,6 +48,7 @@ export function PlayerBar({ game, color, offset, now }: { game: GameSnapshot; co
           {taken.map((c, i) => (
             <img key={i} className={`c-${c.color}`} src={pieceUrl(c.color, c.type)} alt={c.type} />
           ))}
+          {lead > 0 && <span className="lead">+{lead}</span>}
         </span>
       </div>
       {(game.phase === 'play' || game.phase === 'over') && (

@@ -11,11 +11,9 @@ export interface BoardProps {
   /** Legal destinations for a picked-up piece. */
   dests?: (from: string) => string[];
   onMove?: (from: string, to: string) => void;
-  /** Called on right-click / long-press of an enemy piece. */
-  onMarkRequest?: (pieceId: string, square: string) => void;
   marks?: Record<string, PieceType>;
   lastMove?: { from: string; to: string } | null;
-  /** Squares drawn with a subtle tint (e.g. home ranks during setup). */
+  /** Squares drawn with a subtle tint (home ranks during setup, a guess's drop target). */
   tinted?: string[];
   /** Absolutely positioned content over the board, e.g. menus. */
   overlay?: ReactNode;
@@ -32,8 +30,6 @@ interface Drag {
   wasSelected: boolean;
 }
 
-const LONG_PRESS_MS = 450;
-
 /** Percent offsets of a square inside the board, for positioning overlays. */
 export function squarePosition(sq: string, orientation: Color) {
   const i = toIndex(sq);
@@ -45,11 +41,10 @@ export function squarePosition(sq: string, orientation: Color) {
 }
 
 export function Board(props: BoardProps) {
-  const { pieces, orientation, movable, dests, onMove, onMarkRequest, marks, lastMove, tinted, overlay } = props;
+  const { pieces, orientation, movable, dests, onMove, marks, lastMove, tinted, overlay } = props;
   const ref = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
-  const pressTimer = useRef<number | null>(null);
 
   const targets = selected && dests ? dests(selected) : [];
 
@@ -70,11 +65,6 @@ export function Board(props: BoardProps) {
     const f = orientation === 'w' ? col : 7 - col;
     const r = orientation === 'w' ? 7 - row : row;
     return toSquare(r * 8 + f);
-  };
-
-  const cancelPress = () => {
-    if (pressTimer.current) window.clearTimeout(pressTimer.current);
-    pressTimer.current = null;
   };
 
   const tryMove = (from: string, to: string) => {
@@ -111,23 +101,15 @@ export function Board(props: BoardProps) {
     }
 
     setSelected(null);
-    if (piece && onMarkRequest && piece.color !== movable && e.pointerType !== 'mouse') {
-      pressTimer.current = window.setTimeout(() => {
-        pressTimer.current = null;
-        onMarkRequest(piece.id, sq);
-      }, LONG_PRESS_MS);
-    }
   };
 
   const onPointerMove = (e: React.PointerEvent) => {
-    if (pressTimer.current && Math.hypot(e.movementX, e.movementY) > 6) cancelPress();
     if (!drag || e.pointerId !== drag.pointerId) return;
     const active = drag.active || Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) > 4;
     setDrag({ ...drag, x: e.clientX, y: e.clientY, active });
   };
 
   const onPointerUp = (e: React.PointerEvent) => {
-    cancelPress();
     if (!drag || e.pointerId !== drag.pointerId) return;
     const to = squareAt(e.clientX, e.clientY);
     if (drag.active) {
@@ -138,12 +120,6 @@ export function Board(props: BoardProps) {
     setDrag(null);
   };
 
-  const onContextMenu = (e: React.MouseEvent) => {
-    e.preventDefault();
-    const sq = squareAt(e.clientX, e.clientY);
-    const piece = sq ? pieces[toIndex(sq)] : null;
-    if (sq && piece && onMarkRequest && piece.color !== movable) onMarkRequest(piece.id, sq);
-  };
 
   const rect = ref.current?.getBoundingClientRect();
   const size = rect ? rect.width / 8 : 0;
@@ -165,7 +141,7 @@ export function Board(props: BoardProps) {
         lastMove && (lastMove.from === sq || lastMove.to === sq) ? 'last' : '',
         selected === sq ? 'selected' : '',
         tinted?.includes(sq) ? 'tinted' : '',
-        guess ? 'marked' : '',
+        piece?.confirmed ? 'confirmed' : '',
         isTarget ? (piece ? 'target capture' : 'target') : '',
       ]
         .filter(Boolean)
@@ -175,7 +151,7 @@ export function Board(props: BoardProps) {
           {piece && (
             <img
               className={`piece${dragging ? ' ghosted' : ''}`}
-              src={pieceUrl(piece.color, guess ?? piece.type)}
+              src={pieceUrl(piece.color, guess ?? piece.type, !!guess)}
               alt=""
               draggable={false}
             />
@@ -196,11 +172,8 @@ export function Board(props: BoardProps) {
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
-      onPointerCancel={() => {
-        cancelPress();
-        setDrag(null);
-      }}
-      onContextMenu={onContextMenu}
+      onPointerCancel={() => setDrag(null)}
+      onContextMenu={(e) => e.preventDefault()}
     >
       {squares}
       {dragPiece && rect && (

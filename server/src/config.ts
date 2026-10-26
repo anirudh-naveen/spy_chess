@@ -1,3 +1,5 @@
+import { ABANDON_MS } from '@spy/shared';
+
 function required(name: string): string {
   const v = process.env[name];
   if (!v) throw new Error(`Missing environment variable ${name}`);
@@ -12,4 +14,6 @@ export const config = {
     .map((s) => s.trim())
     .filter(Boolean),
   port: Number(process.env.PORT ?? 8080),
+  /** Overridable so tests don't wait a full minute. */
+  abandonMs: Number(process.env.ABANDON_MS ?? ABANDON_MS),
 };

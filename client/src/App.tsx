@@ -31,7 +31,7 @@ function Header() {
         {session.signedIn && session.user ? (
           <>
             <Link to={`/u/${session.user.name}`} className="account-name">
-              {session.user.name} <span className="muted">{session.user.rating}</span>
+              {session.user.name} <span className="muted">{session.user.ratings?.standard.rating}</span>
             </Link>
             <button className="link-btn" onClick={session.signOut}>
               Sign out

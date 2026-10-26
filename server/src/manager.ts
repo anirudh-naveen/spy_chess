@@ -1,5 +1,5 @@
 import { customAlphabet } from 'nanoid';
-import type { Color, ServerMsg } from '@spy/shared';
+import type { Color, GameMode, ServerMsg } from '@spy/shared';
 import { pool } from './db.js';
 import { Game, type Seat } from './game.js';
 
@@ -35,12 +35,23 @@ export class GameManager {
     this.broadcastPresence(conn.playerId);
   }
 
+  /** Brings a game's record of who is connected in line with live connections. */
+  private syncPresence(game: Game) {
+    for (const c of ['w', 'b'] as const) {
+      const seat = game.seats[c];
+      if (seat) game.setPresence(c, this.isOnline(seat.id));
+    }
+  }
+
   /** Loads unfinished games after a restart. */
   async restore() {
     const rows = (await pool.query(`SELECT * FROM games WHERE status IN ('waiting', 'setup', 'play')`)).rows;
     for (const row of rows) {
       try {
-        this.games.set(row.id, Game.fromRow(row, await this.loadMarks(row.id), this.changed));
+        const g = Game.fromRow(row, await this.loadMarks(row.id), this.changed);
+        // Nobody is connected right after a restart; players get the full grace period to come back.
+        this.syncPresence(g);
+        this.games.set(row.id, g);
       } catch (e) {
         console.error(`could not restore game ${row.id}`, e);
       }
@@ -60,8 +71,8 @@ export class GameManager {
     return g;
   }
 
-  async createInvite(creator: Seat, color: Color | 'random'): Promise<Game> {
-    const g = new Game(gameId(), false, creator.id, this.changed);
+  async createInvite(creator: Seat, color: Color | 'random', mode: GameMode): Promise<Game> {
+    const g = new Game(gameId(), false, mode, creator.id, this.changed);
     const c: Color = color === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : color;
     g.seats[c] = creator;
     this.games.set(g.id, g);
@@ -69,13 +80,19 @@ export class GameManager {
     return g;
   }
 
-  createMatch(a: Seat, b: Seat): Game {
-    const g = new Game(gameId(), true, null, this.changed);
+  createMatch(a: Seat, b: Seat, mode: GameMode): Game {
+    const g = new Game(gameId(), true, mode, null, this.changed);
     const [w, bl] = Math.random() < 0.5 ? [a, b] : [b, a];
     g.seats = { w, b: bl };
     this.games.set(g.id, g);
+    this.syncPresence(g);
     g.startSetup();
     return g;
+  }
+
+  /** Seats a visitor in a waiting invite game, if there's room. */
+  seat(game: Game, who: Seat) {
+    if (game.seat(who)) this.syncPresence(game);
   }
 
   /** A player's unfinished rated game, if any. */
@@ -106,7 +123,10 @@ export class GameManager {
 
   private broadcastPresence(playerId: string) {
     for (const g of this.games.values()) {
-      if (g.phase !== 'over' && g.colorOf(playerId)) this.changed(g);
+      const color = g.colorOf(playerId);
+      if (g.phase === 'over' || !color) continue;
+      g.setPresence(color, this.isOnline(playerId));
+      this.changed(g);
     }
   }
 

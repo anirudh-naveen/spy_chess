@@ -2,23 +2,35 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import {
   type Color,
+  type GameMode,
   type GameSnapshot,
   type Layout,
   type PieceType,
   type PieceView,
   type ResultReason,
+  ARMADA_GUESSES,
+  ARMADA_TYPES,
+  PIECE_INFO,
+  STANDARD_GUESSES,
+  squadPoints,
   defaultLayout,
-  homeSquares,
+  homeRanks,
   lastRank,
   other,
   randomLayout,
+  setupSquares,
   toIndex,
+  toSquare,
+  validateLayout,
 } from '@spy/shared';
 import { Board } from '../components/Board';
-import { MarkMenu, PromotionPicker } from '../components/BoardMenus';
+import { PromotionPicker } from '../components/BoardMenus';
+import { GuessTray } from '../components/GuessTray';
 import { MoveList } from '../components/MoveList';
+import { PieceGuide } from '../components/PieceGuide';
 import { PlayerBar } from '../components/PlayerBar';
 import { useQueue } from '../queue';
+import { pieceUrl } from '../pieces';
 import { useSession } from '../session';
 import { socket } from '../socket';
 import { destsFor, useGame, useNow } from '../useGame';
@@ -27,6 +39,7 @@ const REASONS: Record<ResultReason, string> = {
   'king-captured': 'King captured',
   resign: 'Resignation',
   timeout: 'Time out',
+  abandon: 'Opponent left the game',
   agreement: 'Draw agreed',
   'no-moves': 'No legal moves',
   insufficient: 'Only kings left',
@@ -34,6 +47,7 @@ const REASONS: Record<ResultReason, string> = {
 };
 
 const COLOR_NAME: Record<Color, string> = { w: 'White', b: 'Black' };
+export const MODE_NAME: Record<GameMode, string> = { standard: 'Standard', armada: 'Armada' };
 
 function secondsLeft(deadline: number, offset: number, now: number) {
   return Math.max(0, Math.round((deadline - (now + offset)) / 1000));
@@ -77,7 +91,7 @@ function GameView({
   const you = game.you;
   const [flipped, setFlipped] = useState(false);
   const orientation: Color = flipped ? other(you ?? 'w') : (you ?? 'w');
-  const [markAt, setMarkAt] = useState<{ pieceId: string; square: string } | null>(null);
+  const [dropOn, setDropOn] = useState<string | null>(null);
   const [promo, setPromo] = useState<{ from: string; to: string } | null>(null);
   const setup = useSetup(game);
   const session = useSession();
@@ -91,6 +105,25 @@ function GameView({
   const top = other(orientation);
   const bottom = orientation;
 
+  /** An enemy bulb (or marked piece) on this square that the player can mark, if any. */
+  const markable = (square: string | null) => {
+    if (!square || !you || game.phase !== 'play' || !game.view) return null;
+    const p = game.view.board[toIndex(square)];
+    return p && p.color !== you && p.type === 'bulb' ? p : null;
+  };
+
+  const markSquare = (square: string, guess: PieceType | null) => {
+    const piece = markable(square);
+    if (!piece) return;
+    socket.send({ t: 'mark', id: game.id, pieceId: piece.id, guess });
+    patch((g) => {
+      const marks = { ...g.marks };
+      if (guess) marks[piece.id] = guess;
+      else delete marks[piece.id];
+      return { ...g, marks };
+    });
+  };
+
   return (
     <div className="game-layout">
       <div className="board-col">
@@ -101,8 +134,7 @@ function GameView({
           <PlayBoard
             game={game}
             orientation={orientation}
-            markAt={markAt}
-            setMarkAt={setMarkAt}
+            dropTarget={markable(dropOn) ? dropOn : null}
             promo={promo}
             setPromo={setPromo}
             patch={patch}
@@ -118,8 +150,14 @@ function GameView({
         {(game.phase === 'play' || game.phase === 'over') && game.view && <MoveList moves={game.view.moves} />}
         <Actions game={game} onFlip={() => setFlipped((f) => !f)} />
         {you && game.phase === 'play' && (
-          <p className="hint">Right-click or long-press an enemy piece to mark your guess.</p>
+          <GuessTray
+            enemy={other(you)}
+            guesses={game.mode === 'armada' ? ARMADA_GUESSES : STANDARD_GUESSES}
+            onDrop={markSquare}
+            onHover={setDropOn}
+          />
         )}
+        {game.mode === 'armada' && <PieceGuide mode="armada" open={game.phase === 'setup'} />}
       </aside>
     </div>
   );
@@ -130,13 +168,13 @@ function GameView({
 function PlayBoard(props: {
   game: GameSnapshot;
   orientation: Color;
-  markAt: { pieceId: string; square: string } | null;
-  setMarkAt(v: { pieceId: string; square: string } | null): void;
+  /** Square highlighted while a guess is dragged over it. */
+  dropTarget: string | null;
   promo: { from: string; to: string } | null;
   setPromo(v: { from: string; to: string } | null): void;
   patch: (fn: (g: GameSnapshot) => GameSnapshot) => void;
 }) {
-  const { game, orientation, markAt, setMarkAt, promo, setPromo, patch } = props;
+  const { game, orientation, dropTarget, promo, setPromo, patch } = props;
   const view = game.view!;
   const you = game.you;
   const live = game.phase === 'play';
@@ -171,17 +209,6 @@ function PlayBoard(props: {
     else send(from, to);
   };
 
-  const mark = (pieceId: string, guess: PieceType | null) => {
-    socket.send({ t: 'mark', id: game.id, pieceId, guess });
-    patch((g) => {
-      const marks = { ...g.marks };
-      if (guess) marks[pieceId] = guess;
-      else delete marks[pieceId];
-      return { ...g, marks };
-    });
-    setMarkAt(null);
-  };
-
   let overlay = null;
   if (promo && you) {
     overlay = (
@@ -196,17 +223,6 @@ function PlayBoard(props: {
         onClose={() => setPromo(null)}
       />
     );
-  } else if (markAt && you) {
-    overlay = (
-      <MarkMenu
-        square={markAt.square}
-        orientation={orientation}
-        enemy={other(you)}
-        current={game.marks[markAt.pieceId]}
-        onPick={(g) => mark(markAt.pieceId, g)}
-        onClose={() => setMarkAt(null)}
-      />
-    );
   }
 
   return (
@@ -216,51 +232,48 @@ function PlayBoard(props: {
       movable={live ? you : null}
       dests={dests}
       onMove={onMove}
-      onMarkRequest={
-        you && live
-          ? (pieceId, square) => {
-              const p = view.board[toIndex(square)];
-              if (p?.type === 'bulb') setMarkAt({ pieceId, square });
-            }
-          : undefined
-      }
       marks={game.marks}
+      tinted={dropTarget ? [dropTarget] : []}
       lastMove={last ? { from: last.from, to: last.to } : null}
       overlay={overlay}
     />
   );
 }
 
-function layoutPieces(layout: Layout, color: Color): (PieceView | null)[] {
-  const pieces: (PieceView | null)[] = new Array(64).fill(null);
-  for (const [sq, type] of Object.entries(layout)) pieces[toIndex(sq)] = { id: `${color}:${sq}`, color, type };
-  return pieces;
-}
-
 interface SetupState {
   layout: Layout | null;
   locked: boolean;
+  /** Whether the current layout is a legal starting position. */
+  complete: boolean;
+  /** Squares the player may rearrange. */
+  squares: string[];
   swap(from: string, to: string): void;
+  /** Armada only: add a roster piece to the first empty back-rank square, or take it off the board. */
+  toggle(type: PieceType): void;
   shuffle(): void;
-  standard(): void;
+  reset(): void;
   ready(): void;
 }
 
-/** Local arrangement during setup. Drafts are sent so the layout is kept if the timer runs out. */
+/** Local arrangement during setup. Complete drafts are sent so the layout is kept if the timer runs out. */
 function useSetup(game: GameSnapshot): SetupState {
   const you = game.you;
+  const mode = game.mode;
   const locked = !you || game.phase !== 'setup' || !!game.setup?.ready[you];
   const [layout, setLayout] = useState<Layout | null>(null);
   const draftTimer = useRef<number | null>(null);
+  const squares = you ? setupSquares(you, mode) : [];
+  const complete = !!you && !!layout && validateLayout(you, layout, mode) === null;
 
   // Seed from the server copy once; after that the local copy is the source of truth.
   useEffect(() => {
-    if (you && !layout && game.phase === 'setup') setLayout(game.setup?.yourLayout ?? defaultLayout(you));
-  }, [you, game.phase, game.setup?.yourLayout, layout]);
+    if (you && !layout && game.phase === 'setup') setLayout(game.setup?.yourLayout ?? defaultLayout(you, mode));
+  }, [you, mode, game.phase, game.setup?.yourLayout, layout]);
 
   const update = (next: Layout) => {
     setLayout(next);
     if (draftTimer.current) clearTimeout(draftTimer.current);
+    if (!you || validateLayout(you, next, mode) !== null) return;
     draftTimer.current = window.setTimeout(
       () => socket.send({ t: 'setup.submit', id: game.id, layout: next, final: false }),
       250,
@@ -270,8 +283,10 @@ function useSetup(game: GameSnapshot): SetupState {
   return {
     layout,
     locked,
+    complete,
+    squares,
     swap(from, to) {
-      if (!layout || locked) return;
+      if (!layout || locked || !squares.includes(from) || !squares.includes(to)) return;
       const next = { ...layout };
       const a = next[from];
       const b = next[to];
@@ -281,28 +296,46 @@ function useSetup(game: GameSnapshot): SetupState {
       if (b) next[from] = b;
       update(next);
     },
-    shuffle: () => you && !locked && update(randomLayout(you)),
-    standard: () => you && !locked && update(defaultLayout(you)),
+    toggle(type) {
+      if (!layout || locked || !you || type === 'k') return;
+      const next = { ...layout };
+      const at = squares.find((sq) => next[sq] === type);
+      if (at) {
+        delete next[at];
+      } else {
+        const empty = squares.find((sq) => !next[sq]);
+        if (!empty) return;
+        next[empty] = type;
+      }
+      update(next);
+    },
+    shuffle: () => you && !locked && update(randomLayout(you, mode)),
+    reset: () => you && !locked && update(defaultLayout(you, mode)),
     ready() {
-      if (!layout || locked) return;
+      if (!layout || locked || !complete) return;
       if (draftTimer.current) clearTimeout(draftTimer.current);
       socket.send({ t: 'setup.submit', id: game.id, layout, final: true });
     },
   };
 }
 
+function layoutPieces(layout: Layout, color: Color): (PieceView | null)[] {
+  const pieces: (PieceView | null)[] = new Array(64).fill(null);
+  for (const [sq, type] of Object.entries(layout)) pieces[toIndex(sq)] = { id: `${color}:${sq}`, color, type };
+  return pieces;
+}
+
 function SetupBoard({ game, orientation, setup }: { game: GameSnapshot; orientation: Color; setup: SetupState }) {
   const you = game.you;
-  const home = you ? homeSquares(you) : [];
   const pieces = you && setup.layout ? layoutPieces(setup.layout, you) : new Array(64).fill(null);
   return (
     <Board
       pieces={pieces}
       orientation={orientation}
       movable={setup.locked ? null : you}
-      dests={(from) => home.filter((s) => s !== from)}
+      dests={(from) => (setup.squares.includes(from) ? setup.squares.filter((s) => s !== from) : [])}
       onMove={setup.swap}
-      tinted={setup.locked ? [] : home}
+      tinted={setup.locked ? [] : setup.squares}
     />
   );
 }
@@ -329,6 +362,14 @@ function Status({ game, offset, now }: { game: GameSnapshot; offset: number; now
       sub = turn === you ? `Make your first move within ${s}s or the game is aborted.` : `${COLOR_NAME[turn]} has ${s}s to make a first move.`;
     }
     if (game.drawOffer && game.drawOffer !== you) sub = you ? 'Your opponent offers a draw.' : `${COLOR_NAME[game.drawOffer]} offers a draw.`;
+    for (const c of ['w', 'b'] as const) {
+      const d = game.abandonDeadline[c];
+      if (d === null || c === you) continue;
+      const s = secondsLeft(d, offset, now);
+      sub = you
+        ? `Your opponent disconnected. If they don't return in ${s}s, you win.`
+        : `${COLOR_NAME[c]} disconnected · ${s}s to return.`;
+    }
   } else {
     const r = game.result!;
     if (r.reason === 'abort') title = 'Game aborted';
@@ -343,14 +384,23 @@ function Status({ game, offset, now }: { game: GameSnapshot; offset: number; now
       <div className="status-title">{title}</div>
       {sub && <div className="status-sub">{sub}</div>}
       <div className="status-meta">
+        <span>{MODE_NAME[game.mode]}</span>
         <span>10+0</span>
         <span>{game.rated ? 'Rated' : 'Casual'}</span>
+        {game.squads && (
+          <span title="Armada squad points">
+            Squads {game.squads.w} vs {game.squads.b}
+          </span>
+        )}
         {game.stakes && game.phase !== 'over' && (
           <span className="stakes" title="Rating change for a win / draw / loss">
             <span>Win <span className="up">+{game.stakes.win}</span></span>
             <span>Draw {game.stakes.draw >= 0 ? `+${game.stakes.draw}` : `−${-game.stakes.draw}`}</span>
             <span>Loss −{-game.stakes.loss}</span>
           </span>
+        )}
+        {game.rated && game.mode === 'armada' && game.phase !== 'over' && (
+          <span>Lighter squads win more and lose less.</span>
         )}
       </div>
     </div>
@@ -386,22 +436,65 @@ function InvitePanel({ game }: { game: GameSnapshot }) {
 }
 
 function SetupHelp({ game, setup }: { game: GameSnapshot; setup: SetupState }) {
-  if (!game.you) return null;
+  const you = game.you;
+  if (!you) return null;
+  const armada = game.mode === 'armada';
   return (
     <div className="panel-block">
       <p className="hint">
-        Drag pieces between squares on your first two ranks to swap them. Your opponent will only see bulbs.
+        {armada
+          ? 'Pick 8 of the 12 pieces for your back rank (the king is required), then drag to arrange them. Pawns stay on your second rank.'
+          : 'Drag pieces between squares on your first two ranks to swap them.'}{' '}
+        Your opponent will only see bulbs.
       </p>
+      {armada && <Roster color={you} setup={setup} />}
       <div className="btn-row">
         <button className="btn" disabled={setup.locked} onClick={setup.shuffle}>
           Shuffle
         </button>
-        <button className="btn" disabled={setup.locked} onClick={setup.standard}>
-          Standard
+        <button className="btn" disabled={setup.locked} onClick={setup.reset}>
+          {armada ? 'Default' : 'Standard'}
         </button>
-        <button className="btn primary" disabled={setup.locked} onClick={setup.ready}>
+        <button className="btn primary" disabled={setup.locked || !setup.complete} onClick={setup.ready}>
           {setup.locked ? 'Locked in' : 'Ready'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+/** The twelve armada pieces; the ones on the board are highlighted. */
+function Roster({ color, setup }: { color: Color; setup: SetupState }) {
+  const back = homeRanks(color)[0];
+  const onBoard = new Set(
+    Array.from({ length: 8 }, (_, f) => setup.layout?.[toSquare(back * 8 + f)]).filter(Boolean),
+  );
+  const full = onBoard.size >= 8;
+  return (
+    <div className="roster">
+      <div className="roster-head">
+        <span className="label">Your armada</span>
+        <span className={`small ${full ? '' : 'muted'}`}>
+          {onBoard.size} / 8 · {setup.layout ? squadPoints(setup.layout) : 0} pts
+        </span>
+      </div>
+      <div className="roster-grid">
+        {ARMADA_TYPES.map((t) => {
+          const active = onBoard.has(t);
+          return (
+            <button
+              key={t}
+              className={`roster-chip${active ? ' active' : ''}`}
+              disabled={setup.locked || t === 'k' || (!active && full)}
+              onClick={() => setup.toggle(t)}
+              title={PIECE_INFO[t].moves}
+            >
+              <img className={`c-${color}`} src={pieceUrl(color, t)} alt="" />
+              <span className="roster-name">{PIECE_INFO[t].name}</span>
+              <span className="roster-value">{t === 'k' ? '' : PIECE_INFO[t].value}</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -454,7 +547,7 @@ function Actions({ game, onFlip }: { game: GameSnapshot; onFlip(): void }) {
         </>
       )}
       {game.phase === 'over' && game.rated && session.signedIn && (
-        <button className="btn primary" disabled={!!queue.searchingSince} onClick={queue.join}>
+        <button className="btn primary" disabled={!!queue.searchingSince} onClick={() => queue.join(game.mode)}>
           {queue.searchingSince ? 'Searching…' : 'New game'}
         </button>
       )}

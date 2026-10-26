@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
+import { type GameMode, GAME_MODES } from '@spy/shared';
 import { api, ApiError, type Profile } from '../api';
+import { MODE_NAME } from './GamePage';
 
 const REASON: Record<string, string> = {
   'king-captured': 'king captured',
@@ -9,6 +11,7 @@ const REASON: Record<string, string> = {
   agreement: 'agreement',
   'no-moves': 'no moves',
   insufficient: 'kings only',
+  abandon: 'left the game',
 };
 
 function RatingChart({ history }: { history: Profile['history'] }) {
@@ -31,6 +34,7 @@ export function ProfilePage() {
   const { name = '' } = useParams();
   const [data, setData] = useState<Profile | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mode, setMode] = useState<GameMode>('standard');
 
   useEffect(() => {
     setData(null);
@@ -43,7 +47,8 @@ export function ProfilePage() {
   if (error) return <div className="page narrow"><h1>{name}</h1><p className="muted">{error}</p></div>;
   if (!data) return <div className="page narrow muted">Loading…</div>;
 
-  const peak = Math.max(1000, ...data.history.map((h) => h.rating));
+  const history = data.history.filter((h) => h.mode === mode);
+  const peak = Math.max(1000, ...history.map((h) => h.rating));
   const wins = data.games.filter((g) => g.outcome === 'win').length;
 
   return (
@@ -51,18 +56,15 @@ export function ProfilePage() {
       <header className="profile-head">
         <h1>{data.user.name}</h1>
         <dl className="stats">
-          <div>
-            <dt>Rating</dt>
-            <dd>{data.user.rating}</dd>
-          </div>
-          <div>
-            <dt>Peak</dt>
-            <dd>{peak}</dd>
-          </div>
-          <div>
-            <dt>Rated games</dt>
-            <dd>{data.user.gamesPlayed}</dd>
-          </div>
+          {GAME_MODES.map((m) => (
+            <div key={m}>
+              <dt>{MODE_NAME[m]}</dt>
+              <dd>
+                {data.user.ratings[m].rating}
+                <span className="muted small"> · {data.user.ratings[m].games} games</span>
+              </dd>
+            </div>
+          ))}
           <div>
             <dt>Joined</dt>
             <dd>{new Date(data.user.joined).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</dd>
@@ -71,8 +73,19 @@ export function ProfilePage() {
       </header>
 
       <section>
-        <h2>Rating</h2>
-        <RatingChart history={data.history} />
+        <div className="section-head">
+          <h2>
+            Rating <span className="muted small">peak {peak}</span>
+          </h2>
+          <div className="mode-switch small-switch" role="tablist" aria-label="Rating mode">
+            {GAME_MODES.map((m) => (
+              <button key={m} role="tab" aria-selected={mode === m} className={mode === m ? 'active' : ''} onClick={() => setMode(m)}>
+                {MODE_NAME[m]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <RatingChart history={history} />
       </section>
 
       <section>
@@ -97,6 +110,7 @@ export function ProfilePage() {
                       '—'
                     )}
                   </td>
+                  <td className="muted">{MODE_NAME[g.mode]}</td>
                   <td className="muted">{g.reason ? REASON[g.reason] ?? g.reason : ''}</td>
                   <td className="num">
                     {g.ratingChange === null ? (

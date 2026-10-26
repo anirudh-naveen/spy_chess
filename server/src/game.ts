@@ -1,5 +1,6 @@
 import {
   type Color,
+  type GameMode,
   type GamePhase,
   type GameSnapshot,
   type GameState,
@@ -10,18 +11,24 @@ import {
   type Result,
   FIRST_MOVE_MS,
   INITIAL_CLOCK_MS,
+  PIECE_INFO,
   PROMOTION_TYPES,
   SETUP_MS,
   applyMove,
+  armadaDelta,
   boardFromLayouts,
   other,
   randomLayout,
+  newGame,
   ratingDelta,
   redactFor,
   replay,
+  squadPoints,
   stakes,
   validateLayout,
 } from '@spy/shared';
+import { RATING_COLUMNS } from './auth.js';
+import { config } from './config.js';
 import { pool, tx } from './db.js';
 
 export interface Seat {
@@ -34,7 +41,12 @@ export interface Seat {
   games?: number;
 }
 
-const GUESS_TYPES = new Set<Guess>(['k', 'q', 'r', 'b', 'n', 'p']);
+const GUESS_TYPES = new Set(Object.keys(PIECE_INFO));
+
+/** A finished-or-aborted state for games that never reached a board. */
+function emptyState(result: Result | null): GameState {
+  return { board: [], turn: 'w', moves: [], captured: [], result, revealed: { w: [], b: [] } };
+}
 
 /** Persisted alongside the game row so a live game can be restored after a restart. */
 interface Runtime {
@@ -65,6 +77,8 @@ export class Game {
   ratingChange: Record<Color, RatingChange> | null = null;
   /** player id -> enemy piece id -> guess */
   marks = new Map<string, Map<string, Guess>>();
+  /** When each seated player lost their last connection, or null while connected. Not persisted. */
+  away: Record<Color, number | null> = { w: null, b: null };
 
   private timer: NodeJS.Timeout | null = null;
   private saving: Promise<void> = Promise.resolve();
@@ -72,6 +86,7 @@ export class Game {
   constructor(
     readonly id: string,
     readonly rated: boolean,
+    readonly mode: GameMode,
     readonly creator: string | null,
     private readonly onChange: Listener,
   ) {}
@@ -108,7 +123,7 @@ export class Game {
   submitLayout(color: Color, layout: Layout, final: boolean): string | null {
     if (this.phase !== 'setup') return 'Setup is over';
     if (this.ready[color]) return 'Your setup is already locked in';
-    const err = validateLayout(color, layout);
+    const err = validateLayout(color, layout, this.mode);
     if (err) return err;
     this.layouts[color] = { ...layout };
     if (final) this.ready[color] = true;
@@ -120,10 +135,12 @@ export class Game {
 
   private startPlay(now = Date.now()) {
     for (const c of ['w', 'b'] as const) {
-      if (!this.layouts[c] || validateLayout(c, this.layouts[c]) !== null) this.layouts[c] = randomLayout(c);
+      if (!this.layouts[c] || validateLayout(c, this.layouts[c], this.mode) !== null) {
+        this.layouts[c] = randomLayout(c, this.mode);
+      }
       this.ready[c] = true;
     }
-    this.state = { board: boardFromLayouts(this.layouts.w!, this.layouts.b!), turn: 'w', moves: [], captured: [], result: null };
+    this.state = newGame(boardFromLayouts(this.layouts.w!, this.layouts.b!));
     this.phase = 'play';
     this.firstMoveDeadline = now + FIRST_MOVE_MS;
     this.commit();
@@ -218,11 +235,25 @@ export class Game {
     return null;
   }
 
+  /** Tracks a seated player's connection. Losing it starts the abandonment countdown. */
+  setPresence(color: Color, online: boolean, now = Date.now()) {
+    const next = online ? null : (this.away[color] ?? now);
+    if (next === this.away[color]) return;
+    this.away[color] = next;
+    if (this.phase === 'play') this.schedule();
+  }
+
+  /** When an absent player loses, once both sides have moved and the game is underway. */
+  abandonDeadline(color: Color): number | null {
+    const away = this.away[color];
+    if (away === null || this.phase !== 'play' || !this.state || this.firstMoveDeadline !== null) return null;
+    if (this.state.moves.length < 2) return null;
+    return away + config.abandonMs;
+  }
+
   private abort() {
-    if (!this.state) {
-      // Still in setup: there's no board yet, so build an empty result-only state.
-      this.state = { board: [], turn: 'w', moves: [], captured: [], result: null };
-    }
+    // Still in setup: there's no board yet, so build an empty result-only state.
+    if (!this.state) this.state = emptyState(null);
     void this.finish({ winner: null, reason: 'abort' });
   }
 
@@ -273,8 +304,14 @@ export class Game {
     if (this.phase === 'setup') return this.setupDeadline;
     if (this.phase !== 'play' || !this.state) return null;
     if (this.firstMoveDeadline !== null) return this.firstMoveDeadline;
-    if (this.turnStart !== null) return this.turnStart + this.clocks[this.state.turn];
-    return null;
+    const times: number[] = [];
+    if (this.turnStart !== null) times.push(this.turnStart + this.clocks[this.state.turn]);
+    for (const c of ['w', 'b'] as const) {
+      // Abandonment only counts while the opponent is still around to claim it.
+      const d = this.abandonDeadline(c);
+      if (d !== null && this.away[other(c)] === null) times.push(d);
+    }
+    return times.length ? Math.min(...times) : null;
   }
 
   private onDeadline(now = Date.now()) {
@@ -285,6 +322,12 @@ export class Game {
       if (this.turnStart !== null && now - this.turnStart >= this.clocks[this.state.turn]) {
         this.clocks[this.state.turn] = 0;
         return this.timeout(this.state.turn);
+      }
+      for (const c of ['w', 'b'] as const) {
+        const d = this.abandonDeadline(c);
+        if (d !== null && now >= d && this.away[other(c)] === null) {
+          return void this.finish({ winner: other(c), reason: 'abandon' });
+        }
       }
     }
     this.schedule();
@@ -303,6 +346,7 @@ export class Game {
     return {
       id: this.id,
       rated: this.rated,
+      mode: this.mode,
       phase: this.phase,
       you,
       players: { w: seatInfo('w'), b: seatInfo('b') },
@@ -319,12 +363,17 @@ export class Game {
           : null,
       firstMoveDeadline: this.firstMoveDeadline,
       drawOffer: this.drawOffer,
+      abandonDeadline: { w: this.abandonDeadline('w'), b: this.abandonDeadline('b') },
       marks: viewerId && you ? Object.fromEntries(this.marks.get(viewerId) ?? []) : {},
       stakes:
         this.rated && mine?.rating !== undefined && theirs?.rating !== undefined && this.phase !== 'over'
           ? stakes(mine.rating, theirs.rating, mine.games ?? 0)
           : null,
       ratingChange: this.ratingChange,
+      squads:
+        this.mode === 'armada' && this.phase === 'over' && this.layouts.w && this.layouts.b
+          ? { w: squadPoints(this.layouts.w), b: squadPoints(this.layouts.b) }
+          : null,
       result: this.result,
     };
   }
@@ -355,8 +404,8 @@ export class Game {
     const userId = (s: Seat | null) => (s && !s.guest ? s.id : null);
     await pool.query(
       `INSERT INTO games (id, rated, status, creator, white, black, white_name, black_name, white_user, black_user,
-                          setup_white, setup_black, moves, clocks, runtime, result, ended_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+                          setup_white, setup_black, moves, clocks, runtime, result, ended_at, mode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
        ON CONFLICT (id) DO UPDATE SET
          status = EXCLUDED.status, white = EXCLUDED.white, black = EXCLUDED.black,
          white_name = EXCLUDED.white_name, black_name = EXCLUDED.black_name,
@@ -382,13 +431,14 @@ export class Game {
         JSON.stringify(runtime),
         JSON.stringify(this.result),
         this.phase === 'over' ? new Date() : null,
+        this.mode,
       ],
     );
   }
 
   /** Rebuilds a game from its database row. Time spent while the server was down is given back. */
   static fromRow(row: any, marks: { player: string; piece_id: string; guess: Guess }[], onChange: Listener): Game {
-    const g = new Game(row.id, row.rated, row.creator, onChange);
+    const g = new Game(row.id, row.rated, row.mode ?? 'standard', row.creator, onChange);
     const rt: Runtime = row.runtime;
     const shift = (t: number | null) => (t === null ? null : t + (Date.now() - rt.savedAt));
     g.phase = row.status;
@@ -406,7 +456,7 @@ export class Game {
       const s = replay(boardFromLayouts(g.layouts.w, g.layouts.b), row.moves);
       g.state = row.result ? { ...s, result: row.result } : s;
     } else if (row.result) {
-      g.state = { board: [], turn: 'w', moves: [], captured: [], result: row.result };
+      g.state = emptyState(row.result);
     }
     for (const m of marks) {
       if (!g.marks.has(m.player)) g.marks.set(m.player, new Map());
@@ -421,34 +471,51 @@ export class Game {
   }
 }
 
-/** Applies Elo to both players in one transaction, using their ratings at the moment the game ends. */
+/** Applies Elo for the game's mode to both players in one transaction, using their ratings when the game ends. */
 async function applyRatings(game: Game, result: Result): Promise<Record<Color, RatingChange>> {
   const w = game.seats.w!;
   const b = game.seats.b!;
+  const col = RATING_COLUMNS[game.mode];
   return tx(async (c) => {
-    const rows = await c.query('SELECT id, rating, games_played FROM users WHERE id = ANY($1) FOR UPDATE', [[w.id, b.id]]);
+    const rows = await c.query(
+      `SELECT id, ${col.rating} AS rating, ${col.games} AS games_played FROM users WHERE id = ANY($1) FOR UPDATE`,
+      [[w.id, b.id]],
+    );
     const byId = new Map(rows.rows.map((r) => [r.id, r]));
     const rw = byId.get(w.id);
     const rb = byId.get(b.id);
     if (!rw || !rb) throw new Error('rated game player missing');
     const scoreW = result.winner === 'w' ? 1 : result.winner === 'b' ? 0 : 0.5;
-    const dW = ratingDelta(rw.rating, rb.rating, scoreW, rw.games_played);
-    const dB = ratingDelta(rb.rating, rw.rating, 1 - scoreW, rb.games_played);
+    let dW: number;
+    let dB: number;
+    if (game.mode === 'armada' && game.layouts.w && game.layouts.b) {
+      // Lighter squads are rewarded: they gain more for a win and lose less for a loss.
+      const sw = squadPoints(game.layouts.w);
+      const sb = squadPoints(game.layouts.b);
+      dW = armadaDelta(rw.rating, rb.rating, scoreW, rw.games_played, sw, sb);
+      dB = armadaDelta(rb.rating, rw.rating, 1 - scoreW, rb.games_played, sb, sw);
+    } else {
+      dW = ratingDelta(rw.rating, rb.rating, scoreW, rw.games_played);
+      dB = ratingDelta(rb.rating, rw.rating, 1 - scoreW, rb.games_played);
+    }
     const change = {
       w: { before: rw.rating, after: rw.rating + dW },
       b: { before: rb.rating, after: rb.rating + dB },
     };
     for (const [seat, ch] of [[w, change.w], [b, change.b]] as const) {
-      await c.query('UPDATE users SET rating = $2, games_played = games_played + 1 WHERE id = $1', [seat.id, ch.after]);
+      await c.query(`UPDATE users SET ${col.rating} = $2, ${col.games} = ${col.games} + 1 WHERE id = $1`, [
+        seat.id,
+        ch.after,
+      ]);
     }
     // The game row must exist before rating_history can reference it.
     await c.query(
-      `INSERT INTO games (id, rated, status) VALUES ($1, true, 'over') ON CONFLICT (id) DO NOTHING`,
-      [game.id],
+      `INSERT INTO games (id, rated, status, mode) VALUES ($1, true, 'over', $2) ON CONFLICT (id) DO NOTHING`,
+      [game.id, game.mode],
     );
     await c.query(
-      'INSERT INTO rating_history (user_id, game_id, before, after) VALUES ($1,$2,$3,$4), ($5,$2,$6,$7)',
-      [w.id, game.id, change.w.before, change.w.after, b.id, change.b.before, change.b.after],
+      'INSERT INTO rating_history (user_id, game_id, before, after, mode) VALUES ($1,$2,$3,$4,$8), ($5,$2,$6,$7,$8)',
+      [w.id, game.id, change.w.before, change.w.after, b.id, change.b.before, change.b.after, game.mode],
     );
     return change;
   });

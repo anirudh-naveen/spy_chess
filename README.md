@@ -15,19 +15,30 @@ pieces as an identical **bulb**, and you see theirs the same way. Work out what 
 - **No check.** Moving into danger is allowed. Capturing the enemy king wins.
 - **Information:** captured pieces are revealed to both players. Promotions are hidden from the opponent. Every piece
   is revealed when the game ends.
-- **Marking:** right-click (or long-press) an enemy bulb to mark it as a king, queen, rook, bishop, knight or pawn.
-  The mark follows the piece as it moves.
+- **Marking:** drag a piece from the Guesses box onto an enemy bulb to mark it; it's drawn as your guess, outlined in
+  red. Drop the plain bulb to clear a mark. Marks are private and follow the piece as it moves.
 - **Draws:** by agreement, when only kings are left, or when the side to move has no legal moves.
 - **Time:** 10+0. Clocks start once both sides have moved. Each side has 30 seconds to make its first move, or the
   game is aborted.
+- **Abandoning:** once both sides have moved, a player who stays disconnected for 60 seconds loses, as long as their
+  opponent is still connected.
+
+## Modes
+
+- **Standard:** the usual 16 pieces, arranged anywhere on your first two ranks.
+- **Armada:** pawns stay on your second rank. You pick 8 of 12 back-rank pieces, at most one of each, king required:
+  king, queen, chancellor, archbishop, rook, jumper, bishop, knight, camel, guard, lancer and scout. The in-game piece
+  guide explains each one. Scouts permanently reveal enemy pieces next to them, except guards.
 
 ## Ratings
 
-Everyone starts at 1000. Ratings use standard Elo:
+Each mode has its own rating, and everyone starts at 1000 in both. Ratings use standard Elo:
 
 - K = 40 for your first 30 rated games, then K = 20.
 - Changes are whole points, and a decisive result moves you at least 1 point.
 - Before a rated game you see what you stand to gain or lose for a win, draw or loss.
+- In armada, squad points (the summed value of your 7 non-king pieces) act as a handicap: each point of difference
+  counts like 15 rating points, so a lighter squad gains more for a win and loses less for a loss.
 
 Only matchmaking games are rated, and they require an account. Invite-link games are casual, and anyone can play them
 without signing in.

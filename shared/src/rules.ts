@@ -15,6 +15,7 @@ export type ResultReason =
   | 'king-captured'
   | 'resign'
   | 'timeout'
+  | 'abandon'
   | 'agreement'
   | 'no-moves'
   | 'insufficient'
@@ -44,6 +45,8 @@ export interface GameState {
   moves: MoveRecord[];
   captured: { color: Color; type: PieceType }[];
   result: Result | null;
+  /** Enemy piece ids each side has confirmed with a scout. */
+  revealed: Record<Color, string[]>;
 }
 
 export interface MoveInput {
@@ -60,11 +63,31 @@ const KNIGHT: [number, number][] = [
 const KING: [number, number][] = [
   [1, 0], [1, 1], [0, 1], [-1, 1], [-1, 0], [-1, -1], [0, -1], [1, -1],
 ];
+const CAMEL: [number, number][] = [
+  [1, 3], [3, 1], [3, -1], [1, -3], [-1, -3], [-3, -1], [-3, 1], [-1, 3],
+];
+const JUMPER: [number, number][] = KING.flatMap(([df, dr]) => [[df, dr], [df * 2, dr * 2]] as [number, number][]);
 const ROOK_DIRS: [number, number][] = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 const BISHOP_DIRS: [number, number][] = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
 
 export function newGame(board: Board): GameState {
-  return { board, turn: 'w', moves: [], captured: [], result: null };
+  return { board, turn: 'w', moves: [], captured: [], result: null, revealed: scan(board, { w: [], b: [] }) };
+}
+
+/** Adds every enemy piece (except guards) next to one of a side's scouts to that side's revealed list. */
+export function scan(board: Board, revealed: Record<Color, string[]>): Record<Color, string[]> {
+  const out = { w: new Set(revealed.w), b: new Set(revealed.b) };
+  for (let i = 0; i < 64; i++) {
+    const p = board[i];
+    if (!p || p.type !== 's') continue;
+    for (const [df, dr] of KING) {
+      const j = at(fileOf(i) + df, rankOf(i) + dr);
+      const t = j >= 0 ? board[j] : null;
+      // Guards are cloaked from scouts.
+      if (t && t.color !== p.color && t.type !== 'g') out[p.color].add(t.id);
+    }
+  }
+  return { w: [...out.w], b: [...out.b] };
 }
 
 function at(f: number, r: number): number {
@@ -117,6 +140,7 @@ export function targetsFrom(board: Board, from: number): number[] {
       KNIGHT.forEach(([df, dr]) => tryStep(df, dr));
       break;
     case 'k':
+    case 'g':
       KING.forEach(([df, dr]) => tryStep(df, dr));
       break;
     case 'r':
@@ -129,6 +153,27 @@ export function targetsFrom(board: Board, from: number): number[] {
       slide(ROOK_DIRS);
       slide(BISHOP_DIRS);
       break;
+    case 'c':
+      slide(ROOK_DIRS);
+      KNIGHT.forEach(([df, dr]) => tryStep(df, dr));
+      break;
+    case 'a':
+      slide(BISHOP_DIRS);
+      KNIGHT.forEach(([df, dr]) => tryStep(df, dr));
+      break;
+    case 'j':
+      JUMPER.forEach(([df, dr]) => tryStep(df, dr));
+      break;
+    case 'm':
+      CAMEL.forEach(([df, dr]) => tryStep(df, dr));
+      break;
+    case 'l': {
+      const d = pawnDir(p.color);
+      slide([[0, d]]);
+      ([[1, 0], [-1, 0], [0, -d]] as [number, number][]).forEach(([df, dr]) => tryStep(df, dr));
+      break;
+    }
+    case 's':
     case 'p': {
       const d = pawnDir(p.color);
       const one = at(f, r + d);
@@ -209,12 +254,20 @@ export function applyMove(state: GameState, move: MoveInput): GameState | string
     captured.push({ color: target.color, type: target.type });
   }
 
+  // A promoted piece is unknown again, even to a scout that had confirmed the pawn.
+  const opp = other(piece.color);
+  const revealed = {
+    ...state.revealed,
+    [opp]: record.promo ? state.revealed[opp].filter((id) => id !== piece.id) : state.revealed[opp],
+  } as Record<Color, string[]>;
+
   const next: GameState = {
     board,
     turn: other(state.turn),
     moves: [...state.moves, record],
     captured,
     result: null,
+    revealed: scan(board, revealed),
   };
 
   if (target?.type === 'k') {

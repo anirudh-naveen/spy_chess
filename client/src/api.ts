@@ -1,4 +1,4 @@
-import type { PublicUser } from '@spy/shared';
+import type { GameMode, ModeRating, PublicUser, ResultReason } from '@spy/shared';
 
 export const API_URL = (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, '') ?? 'http://localhost:8080';
 export const WS_URL = API_URL.replace(/^http/, 'ws') + '/ws';
@@ -27,15 +27,16 @@ export async function api<T>(path: string, opts: { method?: string; body?: unkno
 export type AuthResponse = { token: string; user: PublicUser };
 
 export interface Profile {
-  user: { name: string; rating: number; gamesPlayed: number; joined: string };
-  history: { rating: number; at: string }[];
+  user: { name: string; ratings: Record<GameMode, ModeRating>; joined: string };
+  history: { mode: GameMode; rating: number; at: string }[];
   games: {
     id: string;
     rated: boolean;
+    mode: GameMode;
     color: 'w' | 'b';
     opponent: string | null;
     outcome: 'win' | 'loss' | 'draw';
-    reason: string | null;
+    reason: ResultReason | null;
     ratingChange: number | null;
     endedAt: string;
   }[];

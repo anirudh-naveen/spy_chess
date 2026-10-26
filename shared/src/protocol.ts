@@ -1,4 +1,4 @@
-import type { Color, Layout, PieceType, Square } from './board.js';
+import type { Color, GameMode, Layout, PieceType, Square } from './board.js';
 import type { Stakes } from './elo.js';
 import type { Result } from './rules.js';
 import type { GameView } from './view.js';
@@ -8,15 +8,22 @@ export const INITIAL_CLOCK_MS = 10 * 60 * 1000;
 export const SETUP_MS = 60 * 1000;
 /** Each side must make its first move within this window or the game is aborted. */
 export const FIRST_MOVE_MS = 30 * 1000;
+/** A player offline this long during play loses, if their opponent is still connected. */
+export const ABANDON_MS = 60 * 1000;
 
 export type Guess = PieceType;
+
+export interface ModeRating {
+  rating: number;
+  games: number;
+}
 
 export interface PublicUser {
   id: string;
   name: string;
   guest: boolean;
-  rating?: number;
-  gamesPlayed?: number;
+  /** Registered users only: one rating per mode. */
+  ratings?: Record<GameMode, ModeRating>;
 }
 
 export type GamePhase = 'waiting' | 'setup' | 'play' | 'over';
@@ -37,6 +44,7 @@ export interface RatingChange {
 export interface GameSnapshot {
   id: string;
   rated: boolean;
+  mode: GameMode;
   phase: GamePhase;
   you: Color | null;
   players: Record<Color, SeatInfo | null>;
@@ -55,16 +63,20 @@ export interface GameSnapshot {
   /** Deadline for the pending first move, if any. */
   firstMoveDeadline: number | null;
   drawOffer: Color | null;
+  /** When a disconnected player will lose by abandonment, per color. */
+  abandonDeadline: Record<Color, number | null>;
   /** Your private marks: enemy piece id -> guessed type. */
   marks: Record<string, Guess>;
   stakes: Stakes | null;
   ratingChange: Record<Color, RatingChange> | null;
+  /** Armada squad points for both sides, shown once the game is over. */
+  squads: Record<Color, number> | null;
   result: Result | null;
 }
 
 export type ClientMsg =
   | { t: 'hello'; token: string }
-  | { t: 'queue.join' }
+  | { t: 'queue.join'; mode: GameMode }
   | { t: 'queue.leave' }
   | { t: 'game.join'; id: string }
   | { t: 'game.leave'; id: string }
@@ -79,7 +91,7 @@ export type ClientMsg =
 
 export type ServerMsg =
   | { t: 'hello.ok'; user: PublicUser }
-  | { t: 'queue.status'; searching: boolean; since: number | null }
+  | { t: 'queue.status'; searching: boolean; since: number | null; mode: GameMode | null }
   | { t: 'match.found'; id: string }
   | { t: 'game.state'; game: GameSnapshot }
   | { t: 'error'; message: string; id?: string }

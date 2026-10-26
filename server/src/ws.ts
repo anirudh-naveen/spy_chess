@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from 'ws';
-import type { ClientMsg, ServerMsg } from '@spy/shared';
-import { type Identity, loadUser, verifyToken } from './auth.js';
+import { type ClientMsg, type GameMode, type ServerMsg, GAME_MODES } from '@spy/shared';
+import { type Identity, loadUser, modeRating, publicUser, verifyToken } from './auth.js';
 import type { Seat } from './game.js';
 import type { Conn, GameManager } from './manager.js';
 import { Matchmaker } from './matchmaking.js';
@@ -17,13 +17,29 @@ class Connection implements Conn {
   }
 }
 
+/** Sockets that miss a ping for this long are treated as gone, so silent drops start the abandon countdown. */
+const HEARTBEAT_MS = 15000;
+
 export function wsRoutes(app: FastifyInstance, manager: GameManager) {
   const byPlayer = new Map<string, Set<Connection>>();
+  const alive = new Map<WebSocket, boolean>();
+
+  const heartbeat = setInterval(() => {
+    for (const [ws, ok] of alive) {
+      if (!ok) {
+        ws.terminate();
+        continue;
+      }
+      alive.set(ws, false);
+      ws.ping();
+    }
+  }, HEARTBEAT_MS);
+  heartbeat.unref();
 
   const matchmaker = new Matchmaker(manager, (ids, gameId) => {
     for (const id of ids) {
       for (const c of byPlayer.get(id) ?? []) {
-        c.send({ t: 'queue.status', searching: false, since: null });
+        c.send({ t: 'queue.status', searching: false, since: null, mode: null });
         c.send({ t: 'match.found', id: gameId });
       }
     }
@@ -31,6 +47,8 @@ export function wsRoutes(app: FastifyInstance, manager: GameManager) {
 
   app.get('/ws', { websocket: true }, (socket) => {
     const conn = new Connection(socket);
+    alive.set(socket, true);
+    socket.on('pong', () => alive.set(socket, true));
 
     // Handle one message at a time per connection, so "hello" finishes before anything that depends on it.
     let queue = Promise.resolve();
@@ -52,6 +70,7 @@ export function wsRoutes(app: FastifyInstance, manager: GameManager) {
     });
 
     socket.on('close', () => {
+      alive.delete(socket);
       manager.disconnected(conn);
       if (!conn.who) return;
       const set = byPlayer.get(conn.who.id);
@@ -74,7 +93,7 @@ export function wsRoutes(app: FastifyInstance, manager: GameManager) {
       if (!who.guest) {
         const u = await loadUser(who.id);
         if (!u) return conn.send({ t: 'error', message: 'Account not found' });
-        user = { id: u.id, name: u.username, guest: false, rating: u.rating, gamesPlayed: u.games_played };
+        user = publicUser(u);
       } else {
         user = { id: who.id, name: who.name, guest: true };
       }
@@ -83,8 +102,8 @@ export function wsRoutes(app: FastifyInstance, manager: GameManager) {
       byPlayer.get(who.id)!.add(conn);
       manager.connected(who.id);
       conn.send({ t: 'hello.ok', user });
-      const since = matchmaker.since(who.id);
-      if (since) conn.send({ t: 'queue.status', searching: true, since });
+      const queued = matchmaker.entry(who.id);
+      if (queued) conn.send({ t: 'queue.status', searching: true, since: queued.since, mode: queued.mode });
       return;
     }
 
@@ -94,7 +113,7 @@ export function wsRoutes(app: FastifyInstance, manager: GameManager) {
       const game = await manager.get(msg.id);
       if (!game) return conn.send({ t: 'error', message: 'Game not found', id: msg.id });
       if (who && game.phase === 'waiting' && !game.colorOf(who.id)) {
-        game.seat({ id: who.id, name: who.name, guest: who.guest });
+        manager.seat(game, { id: who.id, name: who.name, guest: who.guest });
       }
       return manager.watch(conn, game);
     }
@@ -108,23 +127,25 @@ export function wsRoutes(app: FastifyInstance, manager: GameManager) {
       if (active) return conn.send({ t: 'match.found', id: active.id });
       const u = await loadUser(who.id);
       if (!u) return conn.send({ t: 'error', message: 'Account not found' });
+      const mode: GameMode = GAME_MODES.includes(msg.mode) ? msg.mode : 'standard';
+      const r = modeRating(u, mode);
       const seat: Seat & { rating: number; games: number } = {
         id: u.id,
         name: u.username,
         guest: false,
-        rating: u.rating,
-        games: u.games_played,
+        rating: r.rating,
+        games: r.games,
       };
-      const since = matchmaker.join(seat);
+      const since = matchmaker.join(seat, mode);
       // join() may have matched immediately; only report searching if still queued.
-      if (matchmaker.since(who.id)) {
-        for (const c of byPlayer.get(who.id) ?? []) c.send({ t: 'queue.status', searching: true, since });
+      if (matchmaker.entry(who.id)) {
+        for (const c of byPlayer.get(who.id) ?? []) c.send({ t: 'queue.status', searching: true, since, mode });
       }
       return;
     }
     if (msg.t === 'queue.leave') {
       matchmaker.leave(who.id);
-      for (const c of byPlayer.get(who.id) ?? []) c.send({ t: 'queue.status', searching: false, since: null });
+      for (const c of byPlayer.get(who.id) ?? []) c.send({ t: 'queue.status', searching: false, since: null, mode: null });
       return;
     }
 

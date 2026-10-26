@@ -3,7 +3,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import jwt from 'jsonwebtoken';
 import { customAlphabet } from 'nanoid';
 import { z } from 'zod';
-import type { PublicUser } from '@spy/shared';
+import type { GameMode, ModeRating, PublicUser } from '@spy/shared';
 import { config } from './config.js';
 import { pool } from './db.js';
 
@@ -43,19 +43,40 @@ export function identify(req: FastifyRequest): Identity | null {
   return verifyToken(h?.startsWith('Bearer ') ? h.slice(7) : null);
 }
 
-interface UserRow {
+export interface UserRow {
   id: string;
   username: string;
   rating: number;
   games_played: number;
+  armada_rating: number;
+  armada_games: number;
+}
+
+export const USER_COLUMNS = 'id, username, rating, games_played, armada_rating, armada_games';
+
+/** Rating columns for each mode. */
+export const RATING_COLUMNS: Record<GameMode, { rating: string; games: string }> = {
+  standard: { rating: 'rating', games: 'games_played' },
+  armada: { rating: 'armada_rating', games: 'armada_games' },
+};
+
+export function modeRating(u: UserRow, mode: GameMode): ModeRating {
+  return mode === 'armada'
+    ? { rating: u.armada_rating, games: u.armada_games }
+    : { rating: u.rating, games: u.games_played };
 }
 
 export function publicUser(u: UserRow): PublicUser {
-  return { id: u.id, name: u.username, guest: false, rating: u.rating, gamesPlayed: u.games_played };
+  return {
+    id: u.id,
+    name: u.username,
+    guest: false,
+    ratings: { standard: modeRating(u, 'standard'), armada: modeRating(u, 'armada') },
+  };
 }
 
 export async function loadUser(id: string): Promise<UserRow | null> {
-  const r = await pool.query('SELECT id, username, rating, games_played FROM users WHERE id = $1', [id]);
+  const r = await pool.query(`SELECT ${USER_COLUMNS} FROM users WHERE id = $1`, [id]);
   return r.rows[0] ?? null;
 }
 
@@ -92,7 +113,7 @@ export function authRoutes(app: FastifyInstance) {
         .send({ error: taken.rows.some((r) => r.name_taken) ? 'Username is taken' : 'Email is already registered' });
     }
     const r = await pool.query(
-      'INSERT INTO users (username, email, pass_hash) VALUES ($1, $2, $3) RETURNING id, username, rating, games_played',
+      `INSERT INTO users (username, email, pass_hash) VALUES ($1, $2, $3) RETURNING ${USER_COLUMNS}`,
       [username, email, await hash(password)],
     );
     const user = r.rows[0] as UserRow;
@@ -104,7 +125,7 @@ export function authRoutes(app: FastifyInstance) {
     if (!parsed.success) return reply.code(400).send({ error: 'Enter your username and password' });
     const { login, password } = parsed.data;
     const r = await pool.query(
-      'SELECT id, username, rating, games_played, pass_hash FROM users WHERE lower(username) = lower($1) OR lower(email) = lower($1)',
+      `SELECT ${USER_COLUMNS}, pass_hash FROM users WHERE lower(username) = lower($1) OR lower(email) = lower($1)`,
       [login],
     );
     const row = r.rows[0];

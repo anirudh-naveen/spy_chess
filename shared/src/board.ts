@@ -1,5 +1,12 @@
 export type Color = 'w' | 'b';
-export type PieceType = 'k' | 'q' | 'r' | 'b' | 'n' | 'p';
+export type GameMode = 'standard' | 'armada';
+export const GAME_MODES: GameMode[] = ['standard', 'armada'];
+
+/**
+ * Classic pieces plus the armada roster:
+ * c chancellor, a archbishop, j jumper, s scout, g guard, l lancer, m camel.
+ */
+export type PieceType = 'k' | 'q' | 'r' | 'b' | 'n' | 'p' | 'c' | 'a' | 'j' | 's' | 'g' | 'l' | 'm';
 
 /** Algebraic square name, e.g. "e4". */
 export type Square = string;
@@ -18,7 +25,8 @@ export type Board = (Piece | null)[];
 /** A player's starting arrangement: square -> piece type, on their own two home ranks. */
 export type Layout = Record<Square, PieceType>;
 
-export const PIECE_COUNTS: Record<PieceType, number> = { k: 1, q: 1, r: 2, b: 2, n: 2, p: 8 };
+/** Piece counts for a standard setup. */
+export const PIECE_COUNTS: Partial<Record<PieceType, number>> = { k: 1, q: 1, r: 2, b: 2, n: 2, p: 8 };
 
 export const FILES = 'abcdefgh';
 

@@ -4,18 +4,22 @@ import { squarePosition } from './Board';
 
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
-/** Column of choices anchored to a square, opening toward the board's center. */
+/** Grid of square-sized choices anchored to a square, opening toward the board's center. */
 function SquareMenu(props: {
   square: string;
   orientation: Color;
   count: number;
+  columns?: number;
   onClose(): void;
   children: React.ReactNode;
   label: string;
 }) {
   const pos = squarePosition(props.square, props.orientation);
+  const columns = props.columns ?? 1;
+  const rows = Math.ceil(props.count / columns);
   const down = pos.row < 4;
-  const top = down ? pos.row * 12.5 : (pos.row + 1 - props.count) * 12.5;
+  const row = Math.min(8 - rows, Math.max(0, down ? pos.row : pos.row + 1 - rows));
+  const col = Math.min(8 - columns, pos.col);
   return (
     <>
       <div className="menu-backdrop" onPointerDown={(e) => (stop(e), props.onClose())} onContextMenu={(e) => (e.preventDefault(), stop(e), props.onClose())} />
@@ -23,43 +27,19 @@ function SquareMenu(props: {
         className="square-menu"
         role="menu"
         aria-label={props.label}
-        style={{ left: pos.left, top: `${Math.max(0, top)}%`, height: `${props.count * 12.5}%` }}
+        style={{
+          left: `${col * 12.5}%`,
+          top: `${row * 12.5}%`,
+          width: `${columns * 12.5}%`,
+          height: `${rows * 12.5}%`,
+          gridTemplateColumns: `repeat(${columns}, 1fr)`,
+        }}
         onPointerDown={stop}
         onContextMenu={(e) => (e.preventDefault(), stop(e))}
       >
         {props.children}
       </div>
     </>
-  );
-}
-
-const GUESSES: PieceType[] = ['k', 'q', 'r', 'b', 'n', 'p'];
-
-export function MarkMenu(props: {
-  square: string;
-  orientation: Color;
-  enemy: Color;
-  current: PieceType | undefined;
-  onPick(guess: PieceType | null): void;
-  onClose(): void;
-}) {
-  return (
-    <SquareMenu square={props.square} orientation={props.orientation} count={7} onClose={props.onClose} label="Mark piece">
-      {GUESSES.map((t) => (
-        <button
-          key={t}
-          role="menuitem"
-          className={`menu-choice${props.current === t ? ' active' : ''}`}
-          title={`Mark as ${PIECE_NAMES[t]}`}
-          onClick={() => props.onPick(t)}
-        >
-          <img src={pieceUrl(props.enemy, t)} alt={PIECE_NAMES[t]} draggable={false} />
-        </button>
-      ))}
-      <button role="menuitem" className="menu-choice clear" title="Clear mark" onClick={() => props.onPick(null)}>
-        <img src={pieceUrl(props.enemy, 'bulb')} alt="Clear" draggable={false} />
-      </button>
-    </SquareMenu>
   );
 }
 

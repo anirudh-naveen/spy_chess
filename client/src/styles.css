@@ -299,19 +299,27 @@ input:focus {
   border-radius: 0;
   background: radial-gradient(transparent 0 62%, rgba(20, 30, 45, 0.38) 63%);
 }
-.sq.marked::before {
+/* Pieces confirmed by a scout get a small corner tick. */
+.sq.confirmed::before {
   content: '';
   position: absolute;
-  inset: 5%;
-  border: 3px solid var(--red);
+  top: 6%;
+  right: 6%;
+  width: 14%;
+  height: 14%;
   border-radius: 50%;
-  z-index: 1;
+  background: var(--sq-hint-strong);
+  border: 1.5px solid #fff;
+  z-index: 3;
   pointer-events: none;
 }
-.sq.marked.target::before {
+.sq.confirmed.target::before {
   inset: 0;
+  width: auto;
+  height: auto;
   border: 0;
   border-radius: 0;
+  background: radial-gradient(transparent 0 62%, rgba(20, 30, 45, 0.38) 63%);
 }
 .piece {
   position: relative;
@@ -361,23 +369,20 @@ input:focus {
 .square-menu {
   position: absolute;
   z-index: 41;
-  width: 12.5%;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-auto-rows: 1fr;
   background: var(--panel);
   border: 1px solid var(--line-strong);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
 }
 .menu-choice {
-  flex: 1;
   min-height: 0;
+  min-width: 0;
   padding: 6%;
   background: none;
   border: 0;
-  border-bottom: 1px solid var(--line);
+  box-shadow: inset 0 -1px 0 var(--line), inset -1px 0 0 var(--line);
   cursor: pointer;
-}
-.menu-choice:last-child {
-  border-bottom: 0;
 }
 .menu-choice img {
   width: 100%;
@@ -451,7 +456,14 @@ input:focus {
 }
 .taken {
   display: flex;
+  align-items: center;
   margin-left: 4px;
+}
+.lead {
+  margin-left: 9px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 .taken img {
   width: 18px;
@@ -799,6 +811,229 @@ input:focus {
 }
 .swatch.b {
   background: #000;
+}
+
+/* ---- modes ------------------------------------------------------------ */
+
+.mode-switch {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+.mode-switch button {
+  height: 32px;
+  padding: 0 16px;
+  background: none;
+  border: 0;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.mode-switch button + button {
+  border-left: 1px solid var(--line-strong);
+}
+.mode-switch button.active {
+  background: var(--raised);
+  color: var(--text);
+}
+.small-switch {
+  margin: 0;
+}
+.small-switch button {
+  height: 26px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+.mode-blurb {
+  margin: 0 0 16px;
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+.section-head h2 {
+  margin: 0;
+}
+.me-ratings {
+  display: flex;
+  gap: 20px;
+  margin: 8px 0 0;
+}
+.me-ratings dt {
+  font-size: 12px;
+  color: var(--muted);
+}
+.me-ratings dd {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.me-ratings .current dd {
+  color: var(--text);
+}
+
+/* ---- armada roster ---------------------------------------------------- */
+
+.roster-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.roster-head .label {
+  margin: 0;
+}
+.roster-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 4px;
+  margin-top: 6px;
+}
+.roster-chip {
+  display: grid;
+  grid-template-columns: 26px 1fr auto;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 6px 3px 3px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.roster-chip img {
+  width: 26px;
+  height: 26px;
+  background: var(--sq-light);
+  border-radius: 2px;
+}
+.roster-chip:not(.active) img {
+  opacity: 0.45;
+}
+.roster-chip.active {
+  border-color: var(--muted);
+  color: var(--text);
+}
+.roster-chip:disabled {
+  cursor: default;
+}
+.roster-chip:disabled:not(.active) {
+  opacity: 0.5;
+}
+.roster-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.roster-value {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- guesses ------------------------------------------------------------ */
+
+.guess-tray {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.guess-tray .label {
+  margin: 0;
+}
+.guess-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.guess-chip {
+  aspect-ratio: 1;
+  padding: 2px;
+  background: var(--sq-dark);
+  border: 0;
+  border-radius: 2px;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.guess-chip:nth-child(even) {
+  background: var(--sq-light);
+}
+.guess-chip img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.guess-chip.clear img {
+  opacity: 0.55;
+}
+.guess-chip:active {
+  cursor: grabbing;
+}
+.guess-ghost {
+  position: fixed;
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* ---- piece guide ------------------------------------------------------ */
+
+.guide {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.home-main .guide {
+  max-width: 640px;
+  margin-top: 16px;
+  border-top: 0;
+}
+.guide summary {
+  cursor: pointer;
+  font-weight: 500;
+}
+.guide ul {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+.guide li {
+  display: grid;
+  grid-template-columns: 32px 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.guide li img {
+  width: 32px;
+  height: 32px;
+  background: var(--sq-dark);
+  border-radius: 2px;
+}
+.guide-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.guide-moves {
+  color: var(--muted);
+  font-size: 12px;
+}
+.guide-role {
+  color: var(--faint);
+  font-size: 12px;
 }
 
 /* ---- narrow screens ----------------------------------------------------- */

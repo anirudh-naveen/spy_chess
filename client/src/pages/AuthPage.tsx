@@ -28,7 +28,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'signup' }) {
       session.signIn(res);
       navigate('/');
       // The socket reconnects as the new user; joining is queued until it's ready.
-      if (next === 'play') queue.join();
+      if (next === 'standard' || next === 'armada') queue.join(next);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Something went wrong');
     } finally {

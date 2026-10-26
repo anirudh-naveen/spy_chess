@@ -1,7 +1,8 @@
-// End-to-end check against a running server: rated matchmaking, setup, hidden pieces,
-// marks, a king capture, Elo, and a guest invite game. Usage: npm run smoke -w server
+// End-to-end check against a running server: rated matchmaking in both modes, setup, hidden
+// pieces, marks, a king capture, Elo, guest invites and abandonment.
+// Usage: start the server with ABANDON_MS=3000, then npm run smoke -w server
 import WebSocket from 'ws';
-import { defaultLayout, type Color, type GameSnapshot, type ServerMsg } from '@spy/shared';
+import { defaultLayout, type Color, type GameMode, type GameSnapshot, type ServerMsg } from '@spy/shared';
 
 const API = process.env.API_URL ?? 'http://localhost:8080';
 const WS = API.replace(/^http/, 'ws') + '/ws';
@@ -50,10 +51,10 @@ class Client {
       this.waiters.push({ pred, resolve: (m) => (clearTimeout(t), resolve(m)) });
     });
   }
-  state(id: string, pred: (g: GameSnapshot) => boolean) {
+  state(id: string, pred: (g: GameSnapshot) => boolean, ms?: number) {
     const g = this.latest.get(id);
     if (g && pred(g)) return Promise.resolve(g);
-    return this.wait((m) => m.t === 'game.state' && m.game.id === id && pred(m.game)).then(
+    return this.wait((m) => m.t === 'game.state' && m.game.id === id && pred(m.game), ms).then(
       (m) => (m as Extract<ServerMsg, { t: 'game.state' }>).game,
     );
   }
@@ -67,7 +68,10 @@ const b = await post('/auth/signup', { username: `bob_${tag}`, email: `b_${tag}@
 assert(a.status === 200 && b.status === 200, 'two accounts sign up');
 assert((await post('/auth/signup', { username: `ALICE_${tag}`, email: 'z@x.dev', password: 'password1' })).status === 409, 'usernames are case-insensitive unique');
 const login = await post('/auth/login', { login: `alice_${tag}`, password: 'password1' });
-assert(login.status === 200 && login.body.user.rating === 1000, 'login works, starting rating 1000');
+assert(
+  login.status === 200 && login.body.user.ratings.standard.rating === 1000 && login.body.user.ratings.armada.rating === 1000,
+  'login works, both ratings start at 1000',
+);
 assert((await post('/auth/login', { login: `alice_${tag}`, password: 'nope' })).status === 401, 'wrong password rejected');
 
 const ca = new Client(a.body.token);
@@ -75,8 +79,8 @@ const cb = new Client(b.body.token);
 await Promise.all([ca.open(), cb.open()]);
 const foundA = ca.wait((m) => m.t === 'match.found');
 const foundB = cb.wait((m) => m.t === 'match.found');
-ca.send({ t: 'queue.join' });
-cb.send({ t: 'queue.join' });
+ca.send({ t: 'queue.join', mode: 'standard' });
+cb.send({ t: 'queue.join', mode: 'standard' });
 const [ma, mb] = (await Promise.all([foundA, foundB])) as Extract<ServerMsg, { t: 'match.found' }>[];
 assert(ma.id === mb.id, 'queue pairs the two players into one game');
 const id = ma.id;
@@ -140,7 +144,10 @@ assert(!leaked, 'no white piece type ever reached black during play');
 
 const whiteName = colorOf(ca) === 'w' ? `alice_${tag}` : `bob_${tag}`;
 const prof = (await (await fetch(`${API}/users/${whiteName}`)).json()) as any;
-assert(prof.user.rating === 1020 && prof.history.length === 1 && prof.games[0].outcome === 'win', 'profile shows rating, history, game');
+assert(
+  prof.user.ratings.standard.rating === 1020 && prof.history.length === 1 && prof.games[0].outcome === 'win',
+  'profile shows rating, history, game',
+);
 const lb = (await (await fetch(`${API}/leaderboard`)).json()) as any;
 assert(lb.players.some((p: any) => p.name === whiteName), 'leaderboard lists the winner');
 
@@ -154,7 +161,7 @@ const c2 = new Client(g2.body.token);
 await Promise.all([c1.open(), c2.open()]);
 c1.send({ t: 'game.join', id: inv.body.id });
 await c1.state(inv.body.id, (g) => g.phase === 'waiting' && g.you === 'w');
-c2.send({ t: 'queue.join' });
+c2.send({ t: 'queue.join', mode: 'standard' });
 await c2.wait((m) => m.t === 'error' && /Sign in/.test(m.message));
 assert(true, 'guests cannot queue for rated games');
 c2.send({ t: 'game.join', id: inv.body.id });
@@ -169,6 +176,80 @@ c1.send({ t: 'resign', id: inv.body.id });
 const ab = await c2.state(inv.body.id, (g) => g.phase === 'over');
 assert(ab.result?.reason === 'abort', 'leaving during setup aborts');
 
+console.log('armada rated game');
+const d = await post('/auth/signup', { username: `dana_${tag}`, email: `d_${tag}@x.dev`, password: 'password1' });
+const e = await post('/auth/signup', { username: `eli_${tag}`, email: `e_${tag}@x.dev`, password: 'password1' });
+const cd = new Client(d.body.token);
+const ce = new Client(e.body.token);
+await Promise.all([cd.open(), ce.open()]);
+// Someone queued for standard must not be paired with an armada player.
+const cx = new Client(a.body.token);
+await cx.open();
+cx.send({ t: 'queue.join', mode: 'standard' });
+const foundD = cd.wait((m) => m.t === 'match.found');
+const foundE = ce.wait((m) => m.t === 'match.found');
+cd.send({ t: 'queue.join', mode: 'armada' as GameMode });
+ce.send({ t: 'queue.join', mode: 'armada' as GameMode });
+const [md, me] = (await Promise.all([foundD, foundE])) as Extract<ServerMsg, { t: 'match.found' }>[];
+assert(md.id === me.id, 'armada queue pairs armada players only');
+cx.send({ t: 'queue.leave' });
+const aid = md.id;
+cd.send({ t: 'game.join', id: aid });
+ce.send({ t: 'game.join', id: aid });
+const as0 = await cd.state(aid, (g) => g.phase === 'setup');
+assert(as0.mode === 'armada' && as0.rated, 'game is a rated armada game');
+const [aw, abl] = as0.you === 'w' ? [cd, ce] : [ce, cd];
+aw.send({ t: 'setup.submit', id: aid, layout: defaultLayout('w'), final: true });
+await aw.wait((m) => m.t === 'error');
+assert(true, 'a standard layout is rejected in armada');
+// Light white squad (pawn-heavy back rank isn't allowed, so pick cheap pieces) vs the heavy default.
+const light = { ...defaultLayout('w', 'armada'), a1: 'g', b1: 'n', c1: 'm', d1: 'l', f1: 's', g1: 'b', h1: 'j' } as any;
+aw.send({ t: 'setup.submit', id: aid, layout: light, final: true });
+abl.send({ t: 'setup.submit', id: aid, layout: defaultLayout('b', 'armada'), final: true });
+await aw.state(aid, (g) => g.phase === 'play');
+aw.send({ t: 'move', id: aid, from: 'e2', to: 'e4' });
+await abl.state(aid, (g) => g.view?.moves.length === 1);
+abl.send({ t: 'move', id: aid, from: 'e7', to: 'e5' });
+await aw.state(aid, (g) => g.view?.moves.length === 2);
+abl.send({ t: 'resign', id: aid });
+const aend = await aw.state(aid, (g) => g.phase === 'over' && !!g.ratingChange);
+assert(aend.squads?.w === 21 && aend.squads?.b === 34, 'squad points shown after the game');
+const gain = aend.ratingChange!.w.after - aend.ratingChange!.w.before;
+assert(gain > 20, `lighter squad's win pays more than an even game (+${gain})`);
+const dName = aw === cd ? `dana_${tag}` : `eli_${tag}`;
+const dprof = (await (await fetch(`${API}/users/${dName}`)).json()) as any;
+assert(
+  dprof.user.ratings.armada.rating === 1000 + gain && dprof.user.ratings.standard.rating === 1000,
+  'only the armada rating changed',
+);
+const alb = (await (await fetch(`${API}/leaderboard?mode=armada`)).json()) as any;
+assert(alb.players.some((p: any) => p.name === dName), 'armada leaderboard lists the winner');
+
+console.log('abandonment');
+const h1 = await post('/auth/guest', {});
+const h2 = await post('/auth/guest', {});
+const inv2 = await post('/invites', { color: 'w', mode: 'standard' }, h1.body.token);
+const k1 = new Client(h1.body.token);
+const k2 = new Client(h2.body.token);
+await Promise.all([k1.open(), k2.open()]);
+const gid = inv2.body.id;
+k1.send({ t: 'game.join', id: gid });
+await k1.state(gid, (g) => g.phase === 'waiting');
+k2.send({ t: 'game.join', id: gid });
+await k2.state(gid, (g) => g.phase === 'setup');
+k1.send({ t: 'setup.submit', id: gid, layout: defaultLayout('w'), final: true });
+k2.send({ t: 'setup.submit', id: gid, layout: defaultLayout('b'), final: true });
+await k1.state(gid, (g) => g.phase === 'play');
+k1.send({ t: 'move', id: gid, from: 'e2', to: 'e4' });
+await k2.state(gid, (g) => g.view?.moves.length === 1);
+k2.send({ t: 'move', id: gid, from: 'e7', to: 'e5' });
+await k1.state(gid, (g) => g.view?.moves.length === 2);
+k1.ws.close();
+const away = await k2.state(gid, (g) => g.abandonDeadline.w !== null);
+assert(!away.players.w!.connected, 'opponent sees white disconnect, with a countdown');
+const ab2 = await k2.state(gid, (g) => g.phase === 'over', 10000);
+assert(ab2.result?.winner === 'b' && ab2.result.reason === 'abandon', 'abandoning player loses');
+
 console.log('\nall smoke checks passed');
-for (const c of [ca, cb, c1, c2, spectator]) c.ws.close();
+for (const c of [ca, cb, c1, c2, spectator, cd, ce, cx, k2]) c.ws.close();
 process.exit(0);
