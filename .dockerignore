@@ -1,0 +1,8 @@
+**/node_modules
+**/dist
+**/.env
+**/.pgdata
+client
+.git
+.github
+.claude
