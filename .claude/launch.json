@@ -1,0 +1,8 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "db", "runtimeExecutable": "npm", "runtimeArgs": ["run", "db:dev", "-w", "server"], "port": 5433 },
+    { "name": "server", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "-w", "server"], "port": 8080 },
+    { "name": "client", "runtimeExecutable": "npm", "runtimeArgs": ["run", "dev", "-w", "client"], "port": 5173 }
+  ]
+}
