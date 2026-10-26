@@ -1,9 +1,16 @@
 {
   "name": "spy-chess",
   "private": true,
-  "workspaces": ["shared", "server", "client"],
+  "workspaces": [
+    "shared",
+    "server",
+    "client"
+  ],
   "scripts": {
     "test": "npm test -w shared",
     "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "railway": "^3.16.0"
   }
 }

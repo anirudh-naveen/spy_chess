@@ -78,8 +78,9 @@ Two tabs in one browser share a guest identity. To play yourself, sign one tab i
 ### 1. Server on Railway
 
 1. In your Railway project, add a **Postgres** database.
-2. Add a new service from this GitHub repository. Leave the root directory empty: `railway.json` builds
-   `server/Dockerfile` from the repo root.
+2. Add a new service named `server` from this GitHub repository. Leave the root directory empty. The build and
+   deploy settings (Dockerfile path, watch paths, health check) live in `.railway/railway.ts`. After `npm install`
+   and `railway link`, apply them with `railway config apply`, and run `railway config plan` first to preview.
 3. Set these variables on the service:
    - `DATABASE_URL` = `${{Postgres.DATABASE_URL}}` (Railway's reference to the database)
    - `JWT_SECRET`: a long random string, e.g. the output of `openssl rand -hex 32`

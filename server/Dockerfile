@@ -1,4 +1,4 @@
-# Build context is the repository root (see railway.json), so the shared package is available.
+# Build context is the repository root (see .railway/railway.ts), so the shared package is available.
 FROM node:22-slim
 
 WORKDIR /app
