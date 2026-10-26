@@ -1,7 +1,7 @@
 {
   "name": "spy-chess",
   "private": true,
-  "workspaces": ["shared"],
+  "workspaces": ["shared", "server"],
   "scripts": {
     "test": "npm test -w shared",
     "typecheck": "npm run typecheck --workspaces --if-present"
