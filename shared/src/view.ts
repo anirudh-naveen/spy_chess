@@ -1,4 +1,4 @@
-import type { Color, PieceType } from './board.js';
+import { type Color, type PieceType, other } from './board.js';
 import type { GameState, MoveRecord, Result } from './rules.js';
 
 export interface PieceView {
@@ -10,20 +10,30 @@ export interface PieceView {
   confirmed?: true;
 }
 
+/** A move as a viewer sees it: the type of a piece they captured stays veiled. */
+export type MoveView = Omit<MoveRecord, 'captured'> & { captured?: PieceType | 'bulb' };
+
+export interface CapturedView {
+  id: string;
+  color: Color;
+  type: PieceType | 'bulb';
+}
+
 export interface GameView {
   board: (PieceView | null)[];
   turn: Color;
-  moves: MoveRecord[];
-  captured: { color: Color; type: PieceType }[];
+  moves: MoveView[];
+  /** Captured pieces. Ones the viewer took stay bulbs unless a scout confirmed them. */
+  captured: CapturedView[];
   result: Result | null;
   /** The color this view was built for, or null for a spectator. */
   you: Color | null;
 }
 
 /**
- * The only way game state should leave the server. Enemy piece types and
- * enemy promotion choices are hidden until the game ends, except pieces the
- * viewer's scouts have confirmed.
+ * The only way game state should leave the server. Enemy piece types (on the
+ * board and once captured) and enemy promotion choices are hidden until the game
+ * ends, except pieces the viewer's scouts have confirmed.
  */
 export function redactFor(state: GameState, viewer: Color | null): GameView {
   const reveal = state.result !== null;
@@ -37,11 +47,17 @@ export function redactFor(state: GameState, viewer: Color | null): GameView {
     }),
     turn: state.turn,
     moves: state.moves.map((m) => {
-      if (reveal || m.color === viewer || !m.promo) return { ...m };
-      const { promo: _hidden, ...rest } = m;
-      return rest;
+      const out: MoveView = { ...m };
+      if (!reveal && m.color !== viewer) delete out.promo;
+      // Only the owner of a captured piece knows what it was.
+      if (!reveal && out.captured && other(m.color) !== viewer) out.captured = 'bulb';
+      return out;
     }),
-    captured: state.captured.map((c) => ({ ...c })),
+    captured: state.captured.map((c) => ({
+      id: c.id,
+      color: c.color,
+      type: reveal || c.color === viewer || scouted.has(c.id) ? c.type : 'bulb',
+    })),
     result: state.result,
     you: viewer,
   };

@@ -202,12 +202,12 @@ const [aw, abl] = as0.you === 'w' ? [cd, ce] : [ce, cd];
 aw.send({ t: 'setup.submit', id: aid, layout: defaultLayout('w'), final: true });
 await aw.wait((m) => m.t === 'error');
 assert(true, 'a standard layout is rejected in armada');
-// Queen, chancellor and archbishop together blow the 30-point budget.
+// Queen, chancellor and archbishop together overshoot the 36-point total.
 const heavy = { ...defaultLayout('w', 'armada'), a1: 'c', b1: 'a', c1: 'r' } as any;
 aw.send({ t: 'setup.submit', id: aid, layout: heavy, final: true });
-await aw.wait((m) => m.t === 'error' && /limit is 30/.test(m.message));
-assert(true, 'an armada over the point budget is rejected');
-// A creative 28-point squad: chancellor and archbishop instead of the queen.
+await aw.wait((m) => m.t === 'error' && /exactly 36/.test(m.message));
+assert(true, 'an armada not worth exactly 36 points is rejected');
+// A creative 36-point army: chancellor and archbishop instead of the queen, plus all 8 pawns.
 const creative = { ...defaultLayout('w', 'armada'), a1: 'c', b1: 'a', c1: 'n', d1: 'b', f1: 's', g1: 'g', h1: 'l' } as any;
 aw.send({ t: 'setup.submit', id: aid, layout: creative, final: true });
 abl.send({ t: 'setup.submit', id: aid, layout: defaultLayout('b', 'armada'), final: true });

@@ -1,12 +1,12 @@
 import { useEffect, useRef } from 'react';
-import type { MoveRecord } from '@spy/shared';
+import type { MoveView } from '@spy/shared';
 
-function san(m: MoveRecord) {
+function san(m: MoveView) {
   return `${m.from}${m.captured ? '×' : '–'}${m.to}${m.promo ? '=' + m.promo.toUpperCase() : ''}`;
 }
 
 /** Moves as squares only: piece identities stay hidden. */
-export function MoveList({ moves }: { moves: MoveRecord[] }) {
+export function MoveList({ moves }: { moves: MoveView[] }) {
   const ref = useRef<HTMLOListElement>(null);
   useEffect(() => {
     ref.current?.scrollTo({ top: ref.current.scrollHeight });

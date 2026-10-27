@@ -1,21 +1,27 @@
-import { type Color, type GameSnapshot, type PieceType, PIECE_INFO } from '@spy/shared';
+import type { Color, GameSnapshot, PieceType } from '@spy/shared';
 import { Link } from 'react-router-dom';
-import { pieceUrl } from '../pieces';
+import { PIECE_NAMES, pieceUrl } from '../pieces';
 import { formatClock, remaining } from '../useGame';
 
-const ORDER: PieceType[] = ['q', 'c', 'a', 'r', 'j', 'b', 'n', 'm', 'g', 'l', 's', 'p', 'k'];
+const ORDER: (PieceType | 'bulb')[] = ['q', 'c', 'a', 'r', 'j', 'b', 'n', 'm', 'g', 'l', 's', 'p', 'k', 'bulb'];
 
-export function PlayerBar({ game, color, offset, now }: { game: GameSnapshot; color: Color; offset: number; now: number }) {
+export function PlayerBar(props: {
+  game: GameSnapshot;
+  color: Color;
+  offset: number;
+  now: number;
+  /** Captured piece a dragged guess is hovering over. */
+  dropPiece?: string | null;
+}) {
+  const { game, color, offset, now, dropPiece } = props;
   const seat = game.players[color];
   const ms = remaining(game, color, offset, now);
   const running = game.clockRunning?.color === color && game.phase === 'play';
-  // Pieces this player has taken, i.e. captured pieces of the other color.
-  const captured = game.view?.captured ?? [];
-  const taken = captured
+  // Pieces this player has taken, i.e. captured pieces of the other color. Ones the
+  // viewer took stay veiled, and can still be marked with a guess.
+  const taken = (game.view?.captured ?? [])
     .filter((c) => c.color !== color)
     .sort((a, b) => ORDER.indexOf(a.type) - ORDER.indexOf(b.type));
-  // Material lead from captures, using each piece's point value.
-  const lead = captured.reduce((sum, c) => sum + (c.color !== color ? 1 : -1) * PIECE_INFO[c.type].value, 0);
   const change = game.ratingChange?.[color];
 
   return (
@@ -45,10 +51,21 @@ export function PlayerBar({ game, color, offset, now }: { game: GameSnapshot; co
           </span>
         )}
         <span className="taken">
-          {taken.map((c, i) => (
-            <img key={i} className={`c-${c.color}`} src={pieceUrl(c.color, c.type)} alt={c.type} />
-          ))}
-          {lead > 0 && <span className="lead">+{lead}</span>}
+          {taken.map((c) => {
+            const guess = c.type === 'bulb' ? game.marks[c.id] : undefined;
+            const markable = c.type === 'bulb' && !!game.you && c.color !== game.you && game.phase === 'play';
+            const label = c.type !== 'bulb' ? PIECE_NAMES[c.type] : guess ? `Marked as ${PIECE_NAMES[guess]}` : 'Unknown piece';
+            return (
+              <span
+                key={c.id}
+                className={`taken-chip${markable ? ' markable' : ''}${dropPiece === c.id ? ' drop' : ''}`}
+                data-piece={markable ? c.id : undefined}
+                title={label}
+              >
+                <img className={`c-${c.color}`} src={pieceUrl(c.color, guess ?? c.type, !!guess)} alt={label} draggable={false} />
+              </span>
+            );
+          })}
         </span>
       </div>
       {(game.phase === 'play' || game.phase === 'over') && (

@@ -33,17 +33,23 @@ export interface MoveRecord {
   color: Color;
   /** Id of the moving piece. */
   pieceId: string;
-  /** Type of the captured piece; captures are revealed to both players. */
+  /** Type of the captured piece. Hidden from the capturer until the game ends. */
   captured?: PieceType;
   /** Promotion choice. Hidden from the opponent until the game ends. */
   promo?: PieceType;
+}
+
+export interface CapturedPiece {
+  id: string;
+  color: Color;
+  type: PieceType;
 }
 
 export interface GameState {
   board: Board;
   turn: Color;
   moves: MoveRecord[];
-  captured: { color: Color; type: PieceType }[];
+  captured: CapturedPiece[];
   result: Result | null;
   /** Enemy piece ids each side has confirmed with a scout. */
   revealed: Record<Color, string[]>;
@@ -251,7 +257,7 @@ export function applyMove(state: GameState, move: MoveInput): GameState | string
   const captured = state.captured.slice();
   if (target) {
     record.captured = target.type;
-    captured.push({ color: target.color, type: target.type });
+    captured.push({ id: target.id, color: target.color, type: target.type });
   }
 
   // A promoted piece is unknown again, even to a scout that had confirmed the pawn.

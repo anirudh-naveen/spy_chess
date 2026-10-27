@@ -250,8 +250,8 @@ input:focus {
 .board {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  grid-template-rows: repeat(8, 1fr);
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-rows: repeat(8, minmax(0, 1fr));
   width: 100%;
   aspect-ratio: 1;
   user-select: none;
@@ -459,19 +459,32 @@ input:focus {
   align-items: center;
   margin-left: 4px;
 }
-.lead {
-  margin-left: 9px;
-  font-size: 12px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
+/* Captured pieces. Veiled ones you took can take a dragged guess. */
+.taken-chip {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  margin-right: -4px;
+  border-radius: 3px;
 }
-.taken img {
-  width: 18px;
-  height: 18px;
-  margin-right: -5px;
+.taken-chip img {
+  width: 100%;
+  height: 100%;
 }
+.taken-chip.markable {
+  margin-right: 2px;
+  width: 26px;
+  height: 26px;
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+}
+.taken-chip.drop {
+  background: var(--sq-hint-strong);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+}
+
 /* Black pieces disappear against the navy surfaces without a hairline edge. */
-.taken img.c-b,
+.taken-chip img.c-b,
 .color-choice img.c-b {
   filter: drop-shadow(0 0 0.6px #9aa4b1);
 }
@@ -622,7 +635,7 @@ input:focus {
 }
 .color-pick {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px;
 }
 .color-choice {
@@ -892,7 +905,7 @@ input:focus {
 }
 .roster-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   margin-top: 6px;
 }
@@ -924,11 +937,14 @@ input:focus {
   border-color: var(--muted);
   color: var(--text);
 }
-.roster-chip:disabled {
+.roster-chip.off {
   cursor: default;
 }
-.roster-chip:disabled:not(.active) {
+.roster-chip.off:not(.active) {
   opacity: 0.5;
+}
+.roster-chip.off.shown {
+  opacity: 0.8;
 }
 .roster-name {
   overflow: hidden;
@@ -941,6 +957,67 @@ input:focus {
 .roster-value {
   color: var(--faint);
   font-variant-numeric: tabular-nums;
+}
+
+/* The armada points readout, the pawn counter and the hover details. */
+.roster-head .points {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.roster-head .points.exact {
+  color: var(--up);
+}
+.roster-chip.shown {
+  border-color: var(--text);
+}
+.pawn-chip {
+  grid-column: 1 / -1;
+  grid-template-columns: 26px 1fr auto;
+  cursor: default;
+}
+.stepper {
+  display: inline-flex;
+  gap: 4px;
+}
+.stepper button {
+  width: 26px;
+  height: 22px;
+  padding: 0;
+  background: linear-gradient(180deg, #2a3646, #222c3a);
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+}
+.stepper button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.roster-info {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: 10px;
+  align-items: start;
+  min-height: 76px;
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.roster-info img {
+  width: 36px;
+  height: 36px;
+  background: var(--sq-light);
+  border-radius: 2px;
+}
+.roster-info > .hint {
+  grid-column: 1 / -1;
+  align-self: center;
+  text-align: center;
 }
 
 /* ---- guesses ------------------------------------------------------------ */
@@ -957,10 +1034,12 @@ input:focus {
 }
 .guess-grid {
   display: grid;
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 3px;
 }
 .guess-chip {
+  /* Let chips shrink below the icon's natural size; Safari won't otherwise, and the row overflows. */
+  min-width: 0;
   aspect-ratio: 1;
   padding: 2px;
   background: var(--sq-dark);

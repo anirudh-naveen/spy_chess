@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { type GameMode, ARMADA_BUDGET, GAME_MODES } from '@spy/shared';
+import { type GameMode, ARMADA_TOTAL, GAME_MODES } from '@spy/shared';
 import { api, ApiError, type LeaderboardRow } from '../api';
 import { PieceGuide } from '../components/PieceGuide';
 import { useQueue } from '../queue';
@@ -27,7 +27,7 @@ function savedMode(): GameMode {
 
 const MODE_BLURB: Record<GameMode, string> = {
   standard: 'The usual sixteen pieces, arranged anywhere on your first two ranks.',
-  armada: `Build a back rank from 12 pieces, one of each, within a ${ARMADA_BUDGET}-point budget. Pawns stay in front.`,
+  armada: `Build an army worth exactly ${ARMADA_TOTAL} points from 12 pieces, one of each, plus pawns, arranged anywhere on your first two ranks.`,
 };
 
 export function HomePage() {
@@ -163,14 +163,14 @@ export function HomePage() {
           <ul>
             <li>
               Before the game you have 60 seconds to set up. In standard, place all 16 pieces anywhere on your first two
-              ranks. In armada, pick 8 different pieces for your back rank worth at most {ARMADA_BUDGET} points (the
-              king is free); pawns stay on the second rank.
+              ranks. In armada, build an army worth exactly {ARMADA_TOTAL} points (one of each piece, the king free,
+              pawns 1 point each) and arrange it anywhere on those two ranks.
             </li>
             <li>Pawns can move two squares on their first move. There is no castling or en passant.</li>
             <li>There is no check. Capture the enemy king to win, so moving into danger is allowed, and fatal.</li>
             <li>
-              Captured pieces are revealed. Drag a piece from the Guesses box onto an enemy bulb to mark what you think
-              it is. Only you see your marks.
+              Pieces you capture stay veiled. Drag a piece from the Guesses box onto an enemy bulb, on the board or in
+              your captures, to mark what you think it is. Only you see your marks.
             </li>
             <li>If a player disconnects for a minute mid-game while their opponent stays, the opponent wins.</li>
             <li>When the game ends, every piece is revealed.</li>

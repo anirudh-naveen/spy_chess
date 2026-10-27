@@ -169,7 +169,7 @@ describe('replay', () => {
       { from: 'e4', to: 'd5' },
     ]);
     expect(s.turn).toBe('b');
-    expect(s.captured).toEqual([{ color: 'b', type: 'p' }]);
+    expect(s.captured).toEqual([{ id: 'b:d7', color: 'b', type: 'p' }]);
     expect(s.board[toIndex('d5')]?.id).toBe('w:e2');
   });
 

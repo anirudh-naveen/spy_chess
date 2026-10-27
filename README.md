@@ -13,10 +13,11 @@ pieces as an identical **bulb**, and you see theirs the same way. Work out what 
 - **Movement:** pieces move as in normal chess. A pawn may move two squares on its first move, from either home rank.
   There is no castling and no en passant.
 - **No check.** Moving into danger is allowed. Capturing the enemy king wins.
-- **Information:** captured pieces are revealed to both players. Promotions are hidden from the opponent. Every piece
-  is revealed when the game ends.
-- **Marking:** drag a piece from the Guesses box onto an enemy bulb to mark it; it's drawn as your guess, outlined in
-  red. Drop the plain bulb to clear a mark. Marks are private and follow the piece as it moves.
+- **Information:** pieces you capture stay veiled; only their owner knows what they were. Promotions are hidden from
+  the opponent. Every piece is revealed (the bulbs crack open) when the game ends.
+- **Marking:** drag a piece from the Guesses box onto an enemy bulb, on the board or among your captures, to mark it;
+  it's drawn as your guess, outlined in red. Drop the plain bulb to clear a mark. Marks are private, follow the piece
+  as it moves, and stay on it after it's captured.
 - **Draws:** by agreement, when only kings are left, or when the side to move has no legal moves.
 - **Time:** 10+0. Clocks start once both sides have moved. Each side has 30 seconds to make its first move, or the
   game is aborted.
@@ -26,10 +27,10 @@ pieces as an identical **bulb**, and you see theirs the same way. Work out what 
 ## Modes
 
 - **Standard:** the usual 16 pieces, arranged anywhere on your first two ranks.
-- **Armada:** pawns stay on your second rank. You pick 8 of 12 back-rank pieces, at most one of each, king required,
-  and the 7 non-king pieces may cost at most 30 points in total:
-  king, queen, chancellor, archbishop, rook, jumper, bishop, knight, camel, guard, lancer and scout. The in-game piece
-  guide explains each one. Scouts permanently reveal enemy pieces next to them, except guards.
+- **Armada:** build an army worth exactly 36 points and arrange it anywhere on your first two ranks. Choose from 12
+  pieces, at most one of each (king, queen, chancellor, archbishop, rook, jumper, bishop, knight, camel, guard, lancer
+  and scout), plus up to 8 pawns at 1 point each. The king is free and required. Hover a piece in setup to see how it
+  moves. Scouts permanently reveal enemy pieces next to them, except guards.
 
 ## Ratings
 
@@ -72,7 +73,7 @@ Terminal 2, the API on port 8080. Copy `server/.env.example` to `server/.env` fi
 npm run dev -w server
 ```
 
-Terminal 3, the app at http://localhost:5173/spy_chess/:
+Terminal 3, the app at http://localhost:5173/veiled_chess/:
 
 ```bash
 npm run dev -w client
@@ -104,9 +105,9 @@ Two tabs in one browser share a guest identity. To play yourself, sign one tab i
 2. In **Settings → Secrets and variables → Actions → Variables**, add `VITE_API_URL` with the Railway URL from above
    (e.g. `https://spy-chess-production.up.railway.app`).
 3. Push to `main`, or run the **Deploy client to GitHub Pages** workflow by hand. The site is published at
-   https://anirudh-naveen.github.io/spy_chess/.
+   https://anirudh-naveen.github.io/veiled_chess/.
 
-Invite links look like `https://anirudh-naveen.github.io/spy_chess/#/g/<id>`.
+Invite links look like `https://anirudh-naveen.github.io/veiled_chess/#/g/<id>`.
 
 ## Credits
 

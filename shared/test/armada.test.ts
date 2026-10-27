@@ -5,7 +5,7 @@ import {
   type Board,
   type GameState,
   type Layout,
-  ARMADA_BUDGET,
+  ARMADA_TOTAL,
   applyMove,
   boardFromLayouts,
   defaultLayout,
@@ -54,15 +54,23 @@ describe('armada setup', () => {
     }
   });
 
-  it('only the back rank can be rearranged', () => {
-    expect(setupSquares('w', 'armada')).toEqual(['a1', 'b1', 'c1', 'd1', 'e1', 'f1', 'g1', 'h1']);
-    expect(setupSquares('b', 'armada')).toHaveLength(8);
+  it('both home ranks can be arranged', () => {
+    expect(setupSquares('w', 'armada')).toHaveLength(16);
     expect(setupSquares('w', 'standard')).toHaveLength(16);
   });
 
-  it('pawns must stay on the second rank', () => {
+  it('pawns are optional, can go anywhere at home, and are capped at 8', () => {
+    // Swap the f1 piece and a pawn, and trade two pawns for a lancer (3) minus one point elsewhere.
     const l: Layout = { ...defaultLayout('w', 'armada'), a1: 'p', a2: 'r' };
-    expect(validateLayout('w', l, 'armada')).toMatch(/Pawns stay/);
+    expect(validateLayout('w', l, 'armada')).toBeNull();
+    const fewer: Layout = { ...defaultLayout('w', 'armada') };
+    delete fewer.a2;
+    delete fewer.b2;
+    delete fewer.c2;
+    fewer.c2 = 'l'; // three pawns out (3), lancer in (3)
+    expect(validateLayout('w', fewer, 'armada')).toBeNull();
+    const nine: Layout = { ...defaultLayout('w', 'armada'), f1: 'p' };
+    expect(validateLayout('w', nine, 'armada')).not.toBeNull();
   });
 
   it('allows at most one of each piece and requires a king', () => {
@@ -219,16 +227,21 @@ describe('armada balance', () => {
     for (const roles of byValue.values()) expect(new Set(roles).size).toBe(roles.length);
   });
 
-  it('squad points sum the non-king back rank', () => {
-    expect(squadPoints(defaultLayout('w', 'armada'))).toBe(5 + 3 + 3 + 9 + 2 + 2 + 3);
+  it('points count every piece but the king, pawns included', () => {
+    expect(squadPoints(defaultLayout('w', 'armada'))).toBe(5 + 3 + 3 + 9 + 3 + 2 + 3 + 8);
   });
 
-  it('armadas must fit the point budget', () => {
-    expect(squadPoints(defaultLayout('w', 'armada'))).toBeLessThanOrEqual(ARMADA_BUDGET);
-    for (let i = 0; i < 50; i++) expect(squadPoints(randomLayout('b', 'armada'))).toBeLessThanOrEqual(ARMADA_BUDGET);
-    // Queen, chancellor and archbishop together can't fit with four more pieces.
+  it('armadas must total exactly the armada points', () => {
+    expect(squadPoints(defaultLayout('w', 'armada'))).toBe(ARMADA_TOTAL);
+    for (let i = 0; i < 200; i++) {
+      const l = randomLayout(i % 2 ? 'w' : 'b', 'armada');
+      expect(squadPoints(l)).toBe(ARMADA_TOTAL);
+      expect(validateLayout(i % 2 ? 'w' : 'b', l, 'armada')).toBeNull();
+    }
     const heavy: Layout = { ...defaultLayout('w', 'armada'), a1: 'c', b1: 'a', c1: 'r' };
-    expect(squadPoints(heavy)).toBeGreaterThan(ARMADA_BUDGET);
-    expect(validateLayout('w', heavy, 'armada')).toMatch(/limit is 30/);
+    expect(validateLayout('w', heavy, 'armada')).toMatch(/exactly 36/);
+    const light: Layout = { ...defaultLayout('w', 'armada') };
+    delete light.a2;
+    expect(validateLayout('w', light, 'armada')).toMatch(/worth 35/);
   });
 });

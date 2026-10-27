@@ -20,7 +20,7 @@ export const PIECE_INFO: Record<PieceType, PieceInfo> = {
     name: 'Queen',
     value: 9,
     moves: 'Any distance in a straight line or diagonal.',
-    role: 'The strongest slider, and the biggest bite out of your budget.',
+    role: 'The strongest slider, and a quarter of your points.',
   },
   c: {
     name: 'Chancellor',
@@ -86,21 +86,23 @@ export const PIECE_INFO: Record<PieceType, PieceInfo> = {
     name: 'Pawn',
     value: 1,
     moves: 'One square forward, two on its first move. Captures diagonally forward.',
-    role: 'Promotes on the last rank.',
+    role: 'Cheap filler for your points total, and it promotes on the last rank.',
   },
 };
 
-/** Most points an armada's back rank may spend, not counting the king. */
-export const ARMADA_BUDGET = 30;
+/** Every armada must be worth exactly this many points. The king is free; pawns cost 1. */
+export const ARMADA_TOTAL = 36;
+/** Most pawns an armada may field. */
+export const ARMADA_MAX_PAWNS = 8;
 
-/** Points a layout spends: the summed value of its pieces other than the king and pawns. */
+/** Points a layout is worth: the summed value of every piece except the king. */
 export function squadPoints(layout: Partial<Record<string, PieceType>>): number {
   let total = 0;
-  for (const t of Object.values(layout)) if (t && t !== 'p') total += PIECE_INFO[t].value;
+  for (const t of Object.values(layout)) if (t) total += PIECE_INFO[t].value;
   return total;
 }
 
-/** The twelve back-rank pieces an armada is chosen from: at most one of each, king required. */
+/** The twelve pieces an armada is chosen from, at most one of each (king required), plus any pawns. */
 export const ARMADA_TYPES: PieceType[] = ['k', 'q', 'c', 'a', 'r', 'j', 'b', 'n', 'm', 'l', 'g', 's'];
 
 /** Guesses offered when marking an enemy bulb in each mode. */

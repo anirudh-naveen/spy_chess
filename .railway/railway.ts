@@ -6,7 +6,7 @@ export const partial = "server";
 
 export default defineRailway(() => {
   const server = service("server", {
-    source: github("anirudh-naveen/spy_chess", { branch: "main" }),
+    source: github("anirudh-naveen/veiled_chess", { branch: "main" }),
     // Values live in Railway (DATABASE_URL references the Postgres service), so secrets stay out of the repo.
     env: {
       DATABASE_URL: preserve(),

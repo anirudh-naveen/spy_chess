@@ -32,7 +32,7 @@ function SquareMenu(props: {
           top: `${row * 12.5}%`,
           width: `${columns * 12.5}%`,
           height: `${rows * 12.5}%`,
-          gridTemplateColumns: `repeat(${columns}, 1fr)`,
+          gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
         }}
         onPointerDown={stop}
         onContextMenu={(e) => (e.preventDefault(), stop(e))}

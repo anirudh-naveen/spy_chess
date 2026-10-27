@@ -11,10 +11,15 @@ interface Drag {
   size: number;
 }
 
-/** Board square under a screen point, if any. */
-function squareAt(x: number, y: number): string | null {
-  const el = document.elementFromPoint(x, y)?.closest('[data-square]');
-  return el?.getAttribute('data-square') ?? null;
+/** Where a guess can land: a board square, or a captured piece in a player bar. */
+export type GuessTarget = { square: string } | { pieceId: string };
+
+function targetAt(x: number, y: number): GuessTarget | null {
+  const el = document.elementFromPoint(x, y)?.closest('[data-square], [data-piece]');
+  const pieceId = el?.getAttribute('data-piece');
+  if (pieceId) return { pieceId };
+  const square = el?.getAttribute('data-square');
+  return square ? { square } : null;
 }
 
 /**
@@ -24,8 +29,8 @@ function squareAt(x: number, y: number): string | null {
 export function GuessTray(props: {
   enemy: Color;
   guesses: PieceType[];
-  onDrop(square: string, guess: PieceType | null): void;
-  onHover(square: string | null): void;
+  onDrop(target: GuessTarget, guess: PieceType | null): void;
+  onHover(target: GuessTarget | null): void;
 }) {
   const [drag, setDrag] = useState<Drag | null>(null);
 
@@ -40,13 +45,13 @@ export function GuessTray(props: {
   const move = (e: React.PointerEvent) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
     setDrag({ ...drag, x: e.clientX, y: e.clientY });
-    props.onHover(squareAt(e.clientX, e.clientY));
+    props.onHover(targetAt(e.clientX, e.clientY));
   };
 
   const end = (e: React.PointerEvent) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
-    const sq = squareAt(e.clientX, e.clientY);
-    if (sq) props.onDrop(sq, drag.guess);
+    const target = targetAt(e.clientX, e.clientY);
+    if (target) props.onDrop(target, drag.guess);
     props.onHover(null);
     setDrag(null);
   };
@@ -77,7 +82,10 @@ export function GuessTray(props: {
         {props.guesses.map(chip)}
         {chip(null)}
       </div>
-      <p className="hint">Drag a piece onto an enemy bulb to mark it. Drop the plain bulb to clear a mark.</p>
+      <p className="hint">
+        Drag a piece onto an enemy bulb, on the board or among the pieces you've captured, to mark it. Drop the plain
+        bulb to clear a mark.
+      </p>
       {drag && (
         <img
           className="guess-ghost"

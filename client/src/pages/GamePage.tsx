@@ -8,8 +8,9 @@ import {
   type PieceType,
   type PieceView,
   type ResultReason,
-  ARMADA_BUDGET,
   ARMADA_GUESSES,
+  ARMADA_MAX_PAWNS,
+  ARMADA_TOTAL,
   ARMADA_TYPES,
   PIECE_INFO,
   STANDARD_GUESSES,
@@ -21,12 +22,11 @@ import {
   randomLayout,
   setupSquares,
   toIndex,
-  toSquare,
   validateLayout,
 } from '@spy/shared';
 import { Board } from '../components/Board';
 import { PromotionPicker } from '../components/BoardMenus';
-import { GuessTray } from '../components/GuessTray';
+import { type GuessTarget, GuessTray } from '../components/GuessTray';
 import { MoveList } from '../components/MoveList';
 import { PieceGuide } from '../components/PieceGuide';
 import { PlayerBar } from '../components/PlayerBar';
@@ -92,7 +92,7 @@ function GameView({
   const you = game.you;
   const [flipped, setFlipped] = useState(false);
   const orientation: Color = flipped ? other(you ?? 'w') : (you ?? 'w');
-  const [dropOn, setDropOn] = useState<string | null>(null);
+  const [dropOn, setDropOn] = useState<GuessTarget | null>(null);
   const [promo, setPromo] = useState<{ from: string; to: string } | null>(null);
   const setup = useSetup(game);
   const session = useSession();
@@ -106,15 +106,20 @@ function GameView({
   const top = other(orientation);
   const bottom = orientation;
 
-  /** An enemy bulb (or marked piece) on this square that the player can mark, if any. */
-  const markable = (square: string | null) => {
-    if (!square || !you || game.phase !== 'play' || !game.view) return null;
-    const p = game.view.board[toIndex(square)];
+  /** The enemy bulb a guess would land on, on the board or among captured pieces, if any. */
+  const markable = (target: GuessTarget | null): { id: string } | null => {
+    if (!target || !you || game.phase !== 'play' || !game.view) return null;
+    const p =
+      'square' in target
+        ? game.view.board[toIndex(target.square)]
+        : game.view.captured.find((c) => c.id === target.pieceId);
     return p && p.color !== you && p.type === 'bulb' ? p : null;
   };
 
-  const markSquare = (square: string, guess: PieceType | null) => {
-    const piece = markable(square);
+  const dropPieceId = dropOn && 'pieceId' in dropOn && markable(dropOn) ? dropOn.pieceId : null;
+
+  const markTarget = (target: GuessTarget, guess: PieceType | null) => {
+    const piece = markable(target);
     if (!piece) return;
     socket.send({ t: 'mark', id: game.id, pieceId: piece.id, guess });
     patch((g) => {
@@ -128,20 +133,20 @@ function GameView({
   return (
     <div className="game-layout">
       <div className="board-col">
-        <PlayerBar game={game} color={top} offset={offset} now={now} />
+        <PlayerBar game={game} color={top} offset={offset} now={now} dropPiece={dropPieceId} />
         {game.phase === 'setup' || game.phase === 'waiting' ? (
           <SetupBoard game={game} orientation={orientation} setup={setup} />
         ) : (
           <PlayBoard
             game={game}
             orientation={orientation}
-            dropTarget={markable(dropOn) ? dropOn : null}
+            dropTarget={dropOn && 'square' in dropOn && markable(dropOn) ? dropOn.square : null}
             promo={promo}
             setPromo={setPromo}
             patch={patch}
           />
         )}
-        <PlayerBar game={game} color={bottom} offset={offset} now={now} />
+        <PlayerBar game={game} color={bottom} offset={offset} now={now} dropPiece={dropPieceId} />
       </div>
       <aside className="side">
         <Status game={game} offset={offset} now={now} />
@@ -154,11 +159,11 @@ function GameView({
           <GuessTray
             enemy={other(you)}
             guesses={game.mode === 'armada' ? ARMADA_GUESSES : STANDARD_GUESSES}
-            onDrop={markSquare}
+            onDrop={markTarget}
             onHover={setDropOn}
           />
         )}
-        {game.mode === 'armada' && <PieceGuide mode="armada" open={game.phase === 'setup'} />}
+        {game.mode === 'armada' && game.phase !== 'setup' && <PieceGuide mode="armada" />}
       </aside>
     </div>
   );
@@ -246,11 +251,15 @@ interface SetupState {
   locked: boolean;
   /** Whether the current layout is a legal starting position. */
   complete: boolean;
-  /** Squares the player may rearrange. */
+  /** Squares the player may arrange pieces on. */
   squares: string[];
   swap(from: string, to: string): void;
-  /** Armada only: add a roster piece to the first empty back-rank square, or take it off the board. */
-  toggle(type: PieceType): void;
+  /** Armada only: whether another piece of this type fits (points, count and space). */
+  canAdd(type: PieceType): boolean;
+  /** Armada only: put a piece on an empty home square (pawns prefer the front rank). */
+  add(type: PieceType): void;
+  /** Armada only: take one piece of this type off the board. */
+  remove(type: PieceType): void;
   shuffle(): void;
   reset(): void;
   ready(): void;
@@ -281,6 +290,20 @@ function useSetup(game: GameSnapshot): SetupState {
     );
   };
 
+  const count = (type: PieceType) => Object.values(layout ?? {}).filter((t) => t === type).length;
+  const canAdd = (type: PieceType) => {
+    if (!layout || locked || mode !== 'armada' || type === 'k') return false;
+    if (type === 'p' ? count('p') >= ARMADA_MAX_PAWNS : count(type) > 0) return false;
+    return squares.some((sq) => !layout[sq]) && squadPoints(layout) + PIECE_INFO[type].value <= ARMADA_TOTAL;
+  };
+  // Pawns fill the front rank first, everything else the back rank.
+  const preferred = (type: PieceType) => {
+    if (!you) return squares;
+    const [back, front] = homeRanks(you);
+    const rank = type === 'p' ? front : back;
+    return [...squares.filter((sq) => toIndex(sq) >> 3 === rank), ...squares.filter((sq) => toIndex(sq) >> 3 !== rank)];
+  };
+
   return {
     layout,
     locked,
@@ -297,17 +320,18 @@ function useSetup(game: GameSnapshot): SetupState {
       if (b) next[from] = b;
       update(next);
     },
-    toggle(type) {
-      if (!layout || locked || !you || type === 'k') return;
+    canAdd,
+    add(type) {
+      if (!layout || !canAdd(type)) return;
+      const empty = preferred(type).find((sq) => !layout[sq]);
+      if (empty) update({ ...layout, [empty]: type });
+    },
+    remove(type) {
+      if (!layout || locked || type === 'k') return;
+      const at = [...preferred(type)].reverse().find((sq) => layout[sq] === type);
+      if (!at) return;
       const next = { ...layout };
-      const at = squares.find((sq) => next[sq] === type);
-      if (at) {
-        delete next[at];
-      } else {
-        const empty = squares.find((sq) => !next[sq]);
-        if (!empty || squadPoints(next) + PIECE_INFO[type].value > ARMADA_BUDGET) return;
-        next[empty] = type;
-      }
+      delete next[at];
       update(next);
     },
     shuffle: () => you && !locked && update(randomLayout(you, mode)),
@@ -436,7 +460,7 @@ function SetupHelp({ game, setup }: { game: GameSnapshot; setup: SetupState }) {
     <div className="panel-block">
       <p className="hint">
         {armada
-          ? `Pick 8 of the 12 pieces for your back rank, spending at most ${ARMADA_BUDGET} points (the king is free and required), then drag to arrange them. Pawns stay on your second rank.`
+          ? `Build an armada worth exactly ${ARMADA_TOTAL} points: any of the 12 pieces, one of each (the king is free and required), plus up to ${ARMADA_MAX_PAWNS} pawns at 1 point each. Drag to arrange them anywhere on your first two ranks.`
           : 'Drag pieces between squares on your first two ranks to swap them.'}{' '}
         Your opponent will only see bulbs.
       </p>
@@ -456,38 +480,42 @@ function SetupHelp({ game, setup }: { game: GameSnapshot; setup: SetupState }) {
   );
 }
 
-/** The twelve armada pieces; the ones on the board are highlighted. */
+/** The armada roster: toggle pieces in and out, count pawns, and hover any piece to see how it works. */
 function Roster({ color, setup }: { color: Color; setup: SetupState }) {
-  const back = homeRanks(color)[0];
-  const onBoard = new Set(
-    Array.from({ length: 8 }, (_, f) => setup.layout?.[toSquare(back * 8 + f)]).filter(Boolean),
-  );
-  const full = onBoard.size >= 8;
-  const spent = setup.layout ? squadPoints(setup.layout) : 0;
+  const [info, setInfo] = useState<PieceType | null>(null);
+  const layout = setup.layout ?? {};
+  const worth = squadPoints(layout);
+  const left = ARMADA_TOTAL - worth;
+  const pawns = Object.values(layout).filter((t) => t === 'p').length;
+  const onBoard = new Set(Object.values(layout));
+  const show = (t: PieceType) => ({
+    onMouseEnter: () => setInfo(t),
+    onFocus: () => setInfo(t),
+  });
+
   return (
     <div className="roster">
       <div className="roster-head">
         <span className="label">Your armada</span>
-        <span className="small">
-          <span className={full ? '' : 'muted'}>{onBoard.size} / 8 pieces</span>
-          {' · '}
-          <span className={spent > ARMADA_BUDGET ? 'over' : 'muted'}>
-            {spent} / {ARMADA_BUDGET} pts
-          </span>
+        <span className={`small points ${left === 0 ? 'exact' : left < 0 ? 'over' : ''}`}>
+          {worth} / {ARMADA_TOTAL} pts{left > 0 ? ` · ${left} to go` : left === 0 ? ' · ready' : ''}
         </span>
       </div>
       <div className="roster-grid">
         {ARMADA_TYPES.map((t) => {
           const active = onBoard.has(t);
+          // Not `disabled`: disabled buttons get no hover, and the details should show for every piece.
+          const off = setup.locked || t === 'k' || (!active && !setup.canAdd(t));
           return (
             <button
               key={t}
-              className={`roster-chip${active ? ' active' : ''}`}
-              disabled={
-                setup.locked || t === 'k' || (!active && (full || spent + PIECE_INFO[t].value > ARMADA_BUDGET))
-              }
-              onClick={() => setup.toggle(t)}
-              title={PIECE_INFO[t].moves}
+              className={`roster-chip${active ? ' active' : ''}${off ? ' off' : ''}${info === t ? ' shown' : ''}`}
+              aria-disabled={off}
+              onClick={() => {
+                setInfo(t);
+                if (!off) (active ? setup.remove : setup.add)(t);
+              }}
+              {...show(t)}
             >
               <img className={`c-${color}`} src={pieceUrl(color, t)} alt="" />
               <span className="roster-name">{PIECE_INFO[t].name}</span>
@@ -495,6 +523,37 @@ function Roster({ color, setup }: { color: Color; setup: SetupState }) {
             </button>
           );
         })}
+        <div className={`roster-chip pawn-chip${pawns ? ' active' : ''}${info === 'p' ? ' shown' : ''}`} {...show('p')}>
+          <img className={`c-${color}`} src={pieceUrl(color, 'p')} alt="" />
+          <span className="roster-name">
+            Pawns <span className="roster-value">×{pawns}</span>
+          </span>
+          <span className="stepper">
+            <button aria-label="Remove a pawn" disabled={setup.locked || pawns === 0} onClick={() => setup.remove('p')} onFocus={() => setInfo('p')}>
+              −
+            </button>
+            <button aria-label="Add a pawn" disabled={!setup.canAdd('p')} onClick={() => setup.add('p')} onFocus={() => setInfo('p')}>
+              +
+            </button>
+          </span>
+        </div>
+      </div>
+      <div className="roster-info" aria-live="polite">
+        {info ? (
+          <>
+            <img className={`c-${color}`} src={pieceUrl(color, info)} alt="" />
+            <div>
+              <div className="guide-name">
+                {PIECE_INFO[info].name}
+                {info !== 'k' && <span className="muted"> · {PIECE_INFO[info].value} pt{PIECE_INFO[info].value === 1 ? '' : 's'}</span>}
+              </div>
+              <div className="guide-moves">{PIECE_INFO[info].moves}</div>
+              <div className="guide-role">{PIECE_INFO[info].role}</div>
+            </div>
+          </>
+        ) : (
+          <p className="hint">Hover over or tap a piece to see how it moves.</p>
+        )}
       </div>
     </div>
   );

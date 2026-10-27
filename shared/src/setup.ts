@@ -11,11 +11,11 @@ import {
   toIndex,
   toSquare,
 } from './board.js';
-import { ARMADA_BUDGET, ARMADA_TYPES, squadPoints } from './pieces.js';
+import { ARMADA_MAX_PAWNS, ARMADA_TOTAL, ARMADA_TYPES, PIECE_INFO, squadPoints } from './pieces.js';
 
 const STANDARD_BACK: PieceType[] = ['r', 'n', 'b', 'q', 'k', 'b', 'n', 'r'];
-// 27 of the 30-point budget.
-const ARMADA_BACK: PieceType[] = ['r', 'n', 'j', 'q', 'k', 's', 'g', 'b'];
+// 28 points behind a full row of 8 pawns: exactly 36.
+const ARMADA_BACK: PieceType[] = ['r', 'n', 'j', 'q', 'k', 'm', 'g', 'b'];
 
 function shuffle<T>(items: T[], rand: () => number): T[] {
   const out = items.slice();
@@ -46,15 +46,29 @@ export function defaultLayout(c: Color, mode: GameMode = 'standard'): Layout {
 
 /**
  * Standard: all 16 pieces shuffled over both home ranks.
- * Armada: the king plus 7 other distinct roster pieces within the budget, shuffled along the back rank.
+ * Armada: the king, a random mix of distinct pieces and pawns worth exactly the armada total,
+ * scattered over both home ranks.
  */
 export function randomLayout(c: Color, mode: GameMode = 'standard', rand: () => number = Math.random): Layout {
   if (mode === 'armada') {
-    // Most random picks fit the budget; redraw until one does.
     for (;;) {
-      const others = shuffle(ARMADA_TYPES.filter((t) => t !== 'k'), rand).slice(0, 7);
-      const layout = withPawns(c, shuffle(['k', ...others], rand));
-      if (squadPoints(layout) <= ARMADA_BUDGET) return layout;
+      const picks: PieceType[] = ['k'];
+      let spent = 0;
+      for (const t of shuffle(ARMADA_TYPES.filter((t) => t !== 'k'), rand)) {
+        // Leave room for a few pawns so most draws can land exactly on the total.
+        if (spent + PIECE_INFO[t].value <= ARMADA_TOTAL - 2 && picks.length < 12 && rand() < 0.75) {
+          picks.push(t);
+          spent += PIECE_INFO[t].value;
+        }
+      }
+      const pawns = ARMADA_TOTAL - spent;
+      if (pawns > ARMADA_MAX_PAWNS || picks.length + pawns > 16) continue;
+      for (let i = 0; i < pawns; i++) picks.push('p');
+      const layout: Layout = {};
+      shuffle(homeSquares(c), rand)
+        .slice(0, picks.length)
+        .forEach((sq, i) => (layout[sq] = picks[i]));
+      return layout;
     }
   }
   const pieces: PieceType[] = [];
@@ -71,37 +85,34 @@ export function homeSquares(c: Color): string[] {
   return homeRanks(c).flatMap(rankSquares);
 }
 
-/** Squares a player may rearrange during setup: both home ranks, or only the back rank in armada. */
-export function setupSquares(c: Color, mode: GameMode = 'standard'): string[] {
-  return mode === 'armada' ? rankSquares(homeRanks(c)[0]) : homeSquares(c);
+/** Squares a player may arrange pieces on during setup: both home ranks, in either mode. */
+export function setupSquares(c: Color, _mode: GameMode = 'standard'): string[] {
+  return homeSquares(c);
 }
 
 /** Returns null when the layout is valid, otherwise a reason. */
 export function validateLayout(c: Color, layout: unknown, mode: GameMode = 'standard'): string | null {
   if (!layout || typeof layout !== 'object') return 'Layout must be an object';
   const entries = Object.entries(layout as Record<string, unknown>);
-  if (entries.length !== 16) return 'Layout must place exactly 16 pieces';
-  const [backRank, frontRank] = homeRanks(c);
+  // Standard fills both ranks; an armada may leave squares empty.
+  if (mode === 'standard' ? entries.length !== 16 : entries.length > 16) return 'Layout must place exactly 16 pieces';
+  const ranks = homeRanks(c);
   const counts: Record<string, number> = {};
   for (const [sq, t] of entries) {
     const i = toIndex(sq);
     if (i < 0) return `Bad square ${sq}`;
-    const rank = rankOf(i);
-    if (rank !== backRank && rank !== frontRank) return `${sq} is not on your home ranks`;
+    if (!ranks.includes(rankOf(i))) return `${sq} is not on your home ranks`;
     if (typeof t !== 'string') return `Bad piece on ${sq}`;
-    if (mode === 'armada') {
-      if ((rank === frontRank) !== (t === 'p')) return 'Pawns stay on your second rank in armada';
-      if (rank === backRank && !ARMADA_TYPES.includes(t as PieceType)) return `Bad piece on ${sq}`;
-    } else if (!(t in PIECE_COUNTS)) {
-      return `Bad piece on ${sq}`;
-    }
+    const allowed = mode === 'armada' ? t === 'p' || ARMADA_TYPES.includes(t as PieceType) : t in PIECE_COUNTS;
+    if (!allowed) return `Bad piece on ${sq}`;
     counts[t] = (counts[t] ?? 0) + 1;
   }
   if (mode === 'armada') {
     if (counts.k !== 1) return 'Your armada needs exactly one king';
     for (const t of ARMADA_TYPES) if ((counts[t] ?? 0) > 1) return 'An armada can include at most one of each piece';
-    const spent = squadPoints(layout as Layout);
-    if (spent > ARMADA_BUDGET) return `Your armada costs ${spent} points; the limit is ${ARMADA_BUDGET}`;
+    if ((counts.p ?? 0) > ARMADA_MAX_PAWNS) return `An armada can have at most ${ARMADA_MAX_PAWNS} pawns`;
+    const worth = squadPoints(layout as Layout);
+    if (worth !== ARMADA_TOTAL) return `Your armada is worth ${worth} points; it must total exactly ${ARMADA_TOTAL}`;
     return null;
   }
   for (const [t, n] of Object.entries(PIECE_COUNTS)) {
